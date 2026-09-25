@@ -1,0 +1,387 @@
+[
+ {
+  "ecode": "JW101",
+  "name": "Payel Mukherjee",
+  "designation": "CEO & Founder",
+  "email": "payel@justwords.in",
+  "manager": ""
+ },
+ {
+  "ecode": "JW102",
+  "name": "Amlan Mukherjee",
+  "designation": "Director",
+  "email": "amlan@justwords.in",
+  "manager": "Payel Mukherjee"
+ },
+ {
+  "ecode": "JW111",
+  "name": "Prerna Daga",
+  "designation": "Sr. Copywriter & Strategist",
+  "email": "prerna.daga@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW113",
+  "name": "Rishabh Sinha",
+  "designation": "Sr Content Specialist - BFSI",
+  "email": "rishabh.sinha@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW118",
+  "name": "Abhishek Chauhan",
+  "designation": "Assistant General Manager - Digital Marketing",
+  "email": "abhishek.chauhan@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW123",
+  "name": "Rushika Papreja",
+  "designation": "Manager - HR & Admin",
+  "email": "rushika.hr@justwords.in",
+  "manager": "Amlan Mukherjee"
+ },
+ {
+  "ecode": "JW142",
+  "name": "Nitesh Shekhawat",
+  "designation": "SEO Executive",
+  "email": "nitesh.shekhawat@justwords.in",
+  "manager": "Mohit Kakkar"
+ },
+ {
+  "ecode": "JW154",
+  "name": "Nikita Gupta",
+  "designation": "Sr. Manager - Content",
+  "email": "nikita.gupta@justwords.in",
+  "manager": "Payel Mukherjee"
+ },
+ {
+  "ecode": "JW155",
+  "name": "Rajeev Kumar",
+  "designation": "SEO Executive & Guestblogger",
+  "email": "rajeev.kumar@justwords.in",
+  "manager": "Mohit Kakkar"
+ },
+ {
+  "ecode": "JW165",
+  "name": "Priyanka Kumari",
+  "designation": "Asst. Manager - Social Media",
+  "email": "priyanka.kumari@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW168",
+  "name": "Meenaxi Badola",
+  "designation": "Team Lead - Web Development",
+  "email": "meenaxi.badola@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW167",
+  "name": "Bhawna Verma",
+  "designation": "Key Account Manager - Digital",
+  "email": "bhawna.verma@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW185",
+  "name": "Qayoom Shiekh",
+  "designation": "Sr. Content Editor",
+  "email": "abdul.qayyum@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW183",
+  "name": "Paarth Sharma",
+  "designation": "Team Lead - Design",
+  "email": "parth.sharma@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW187",
+  "name": "Shyla Sharma",
+  "designation": "Sr. Content Editor",
+  "email": "shyla.sharma@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW191",
+  "name": "Sanjay",
+  "designation": "Graphic Designer",
+  "email": "sanjay.k@justwords.in",
+  "manager": "Paarth Sharma"
+ },
+ {
+  "ecode": "JW194",
+  "name": "Nutan Chaba",
+  "designation": "Sr. SEO Executive",
+  "email": "nutan.chaba@justwords.in",
+  "manager": "Mohit Kakkar"
+ },
+ {
+  "ecode": "JW195",
+  "name": "Abhijeet Pratap",
+  "designation": "Content Associate",
+  "email": "abhijeet.pratap@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW198",
+  "name": "Samarpan Masih",
+  "designation": "Junior SEO Executive",
+  "email": "samarpan.masih@justwords.in",
+  "manager": "Bhawna Verma"
+ },
+ {
+  "ecode": "JW200",
+  "name": "Sneha Singh",
+  "designation": "Sr. SEO Executive",
+  "email": "sneha.singh@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW209",
+  "name": "Ankita Joshi",
+  "designation": "Content Editor",
+  "email": "ankitaa.joshi@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW210",
+  "name": "Anurag Tomer",
+  "designation": "Social Media Manager",
+  "email": "anurag.tomer@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW211",
+  "name": "Darshita Daga",
+  "designation": "Content Editor",
+  "email": "darshita.daga@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW214",
+  "name": "Suryansh Gupta",
+  "designation": "Content Specialist - BFSI",
+  "email": "suryansh.gupta@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW215",
+  "name": "Gouri Singla",
+  "designation": "HR Executive",
+  "email": "gouri.singla@justwords.in",
+  "manager": "Rushika Papreja"
+ },
+ {
+  "ecode": "JW216",
+  "name": "Abhinav Pandey",
+  "designation": "Project Coordinator - Content & Digital",
+  "email": "abhinav.pandey@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW222",
+  "name": "Suhani Bishnoi",
+  "designation": "Content Editor",
+  "email": "suhani.bishnoi@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW226",
+  "name": "Akshat Raj",
+  "designation": "Business Development Executive",
+  "email": "akshat.raj@justwords.in",
+  "manager": "Princy Jain"
+ },
+ {
+  "ecode": "JW224",
+  "name": "Princy Jain",
+  "designation": "Business Head - Sales & Growth",
+  "email": "princy.jain@justwords.in",
+  "manager": "Amlan Mukherjee"
+ },
+ {
+  "ecode": "JW228",
+  "name": "Adarsh Saxena",
+  "designation": "Sr. Business Development Manager",
+  "email": "Adarsh.Saxena@justwords.in",
+  "manager": "Princy Jain"
+ },
+ {
+  "ecode": "JW230",
+  "name": "Jahanvi Bakshi",
+  "designation": "Content Writer",
+  "email": "Jahanvi.bakshi@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW232",
+  "name": "Himanshu Kabdwal",
+  "designation": "SEO Executive",
+  "email": "himanshu.kabdwal@justwords.in",
+  "manager": "Mohit Kakkar"
+ },
+ {
+  "ecode": "JW231",
+  "name": "Nirankar Chauhan",
+  "designation": "Sr. SEO Executive",
+  "email": "nirankar.chauhan@justwords.in",
+  "manager": "Bhawna Verma"
+ },
+ {
+  "ecode": "JW233",
+  "name": "Duttatreya Dalai",
+  "designation": "Content Marketer",
+  "email": "duttatreya.dalai@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW234",
+  "name": "Ankita Maddheshiya",
+  "designation": "Web Developer",
+  "email": "Ankita.Maddheshiya@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW236",
+  "name": "Anjali Singh",
+  "designation": "Social Media Executive",
+  "email": "anjali.singh@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW237",
+  "name": "Krishan Kumar",
+  "designation": "Sr. SEO Specalist",
+  "email": "Krishan.Kumar@justwords.in",
+  "manager": "Mohit Kakkar"
+ },
+ {
+  "ecode": "JW240",
+  "name": "Shubhayan Banerjee",
+  "designation": "AI Automation Specialist",
+  "email": "shubhayan.banerjee@justwords.ca",
+  "manager": "Amlan Mukherjee"
+ },
+ {
+  "ecode": "JW238",
+  "name": "Jahanvi Raj",
+  "designation": "Graphic Design Intern",
+  "email": "Jahanvi.Raj@justwords.in",
+  "manager": "Paarth Sharma"
+ },
+ {
+  "ecode": "JW241",
+  "name": "Anurag Mishra",
+  "designation": "AI Engineer - Customer Success",
+  "email": "Anurag.Mishra@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW239",
+  "name": "Rutba Khan",
+  "designation": "Social Media Specialist",
+  "email": "Rutba.Khan@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW247",
+  "name": "Sumesh Kataria",
+  "designation": "Sr. Performance Marketer",
+  "email": "Sumesh.Kataria@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW248",
+  "name": "Divya Poonia",
+  "designation": "HR Trainee",
+  "email": "",
+  "manager": "Rushika Papreja"
+ },
+ {
+  "ecode": "JW249",
+  "name": "Saurav Jha",
+  "designation": "General Manager – Digital Operations & Business Growth",
+  "email": "Saurav.Jha@justwords.in",
+  "manager": "Amlan Mukherjee"
+ },
+ {
+  "ecode": "JW250",
+  "name": "Sagar Singh",
+  "designation": "Content Specialist",
+  "email": "Sagar.singh@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW251",
+  "name": "Snigdhadeb Guha",
+  "designation": "Social Media Specialist",
+  "email": "snigdhadeb.guha@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW252",
+  "name": "Rishi Singh",
+  "designation": "Business Development Manager",
+  "email": "rishi.singh@justwords.in",
+  "manager": "Princy Jain"
+ },
+ {
+  "ecode": "JW253",
+  "name": "Vipin Kumar",
+  "designation": "Graphic Designer",
+  "email": "vipin.kumar@justwords.in",
+  "manager": "Paarth Sharma"
+ },
+ {
+  "ecode": "JW254",
+  "name": "Monika Yadav",
+  "designation": "SEO Trainee",
+  "email": "monika.yadav@justwords.in",
+  "manager": "Bhawna Verma"
+ },
+ {
+  "ecode": "JW255",
+  "name": "Mohit Kakkar",
+  "designation": "Sr. Manager – SEO Strategy, Growth & Automation",
+  "email": "mohit.kakkar@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW256",
+  "name": "Akhil Kumar",
+  "designation": "Senior Web Developer",
+  "email": "akhil.kumar@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW257",
+  "name": "Ankita Awasthi",
+  "designation": "Finance Content Specialist",
+  "email": "ankita.awasthi@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW258",
+  "name": "Gusheen Kaur",
+  "designation": "Content Associate",
+  "email": "Gursheen.Kaur@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW259",
+  "name": "Shagun Pandey",
+  "designation": "Content Specialist - BFSI",
+  "email": "Shagun.Pandey@justwords.in",
+  "manager": "Nikita Gupta"
+ },
+ {
+  "ecode": "JW260",
+  "name": "Anjali Sharma",
+  "designation": "Quality Analyst Intern",
+  "email": "Anjali.Sharma@justwords.in",
+  "manager": "Saurav Jha"
+ }
+]

@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Runtime data (created on first start; do not commit)
+portal.db
+portal.db-shm
+portal.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Uploaded files (user content)
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db

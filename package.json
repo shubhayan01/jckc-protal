@@ -1,0 +1,20 @@
+{
+  "name": "justwords-associates-portal",
+  "version": "1.0.0",
+  "description": "JustWords Associates' Portal - Employee Management System",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node db.js --reseed"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "multer": "^2.2.0"
+  }
+}

@@ -1,0 +1,22 @@
+# Render Blueprint — deploy the JustWords Associates' Portal.
+# In Render: New + -> Blueprint -> connect this repo. It reads this file.
+#
+# Free plan: no persistent disk. The SQLite DB is recreated and reseeded from
+# seed_employees.json on every deploy/restart, so the app always comes up fresh
+# (any KPI/appraisal data entered live and uploaded files are NOT kept).
+# To persist data, switch `plan` to `starter` and add a disk mounted at /data
+# plus an env var DATA_DIR=/data (the code already reads DATA_DIR).
+services:
+  - type: web
+    name: jckc-portal
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Session signing key — generated once by Render and kept secret.
+      - key: SESSION_SECRET
+        generateValue: true
