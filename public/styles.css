@@ -1145,3 +1145,99 @@ body::before {
   .form-action-bar .toolbar .btn { width: 100%; justify-content: center; }
   .form-action-bar .toolbar .right { margin-left: 0 !important; }
 }
+
+/* ============================================================
+   FINAL BRAND LAYER — Justwords black / white / yellow (flat)
+   Authoritative: last in the cascade so the whole portal reads as
+   one editorial system. Single accent, yellow as highlight only,
+   no gradients. Earlier experimental palettes are neutralised here.
+   ============================================================ */
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --surface-2: #f3f1ea;
+  --surface-3: #ebe8dd;
+  --border: #e8e4d8;
+  --border-strong: #d7d2c4;
+  --text: #16181d;
+  --text-2: #4c4f57;
+  --text-3: #8b8c84;
+  --accent: #16181d;          /* black = primary action / nav */
+  --accent-2: #000000;
+  --accent-soft: #fff4c6;     /* pale yellow wash for focus/selected */
+  --hl: #ffd21e;              /* yellow = highlight only */
+  --hl-strong: #f2c200;
+  --grad-hero: #16181d;       /* flattened */
+  --grad-brand: #16181d;      /* flattened */
+  --shadow: 0 1px 2px rgba(20,20,20,.05), 0 6px 18px rgba(20,20,20,.06);
+  --shadow-lg: 0 16px 44px rgba(20,20,20,.14);
+  --radius: 13px;
+}
+:root[data-theme="dark"], [data-theme="dark"] {
+  --bg: #0b0c0e;
+  --surface: #16181d;
+  --surface-2: #1d2027;
+  --surface-3: #262a32;
+  --border: #282b32;
+  --border-strong: #383c45;
+  --text: #f3f1e9;
+  --text-2: #b6b4aa;
+  --text-3: #83857f;
+  --accent: #ffd21e;          /* yellow primary on dark */
+  --accent-2: #ffe07a;
+  --accent-soft: #2a2410;
+  --hl: #ffd21e;
+  --hl-strong: #ffcf33;
+  --grad-hero: #0f1013;
+  --grad-brand: #ffd21e;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+  --shadow-lg: 0 16px 44px rgba(0,0,0,.55);
+}
+
+/* kill decorative gradient overlays & blobs — flat, intentional surfaces */
+body::before { display: none !important; }
+.hero::before, .hero::after { display: none !important; }
+.grad-text { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text) !important; }
+
+/* hero: flat near-black panel, white serif heading, yellow eyebrow */
+.hero { background: var(--grad-hero); color: #fff; }
+.hero .eyebrow { color: var(--hl); }
+[data-theme="dark"] .hero { border: 1px solid var(--border); }
+
+/* brand mark: fixed black tile with yellow JW, works in both themes */
+.brand .logo { background: #16181d !important; color: var(--hl) !important; box-shadow: none !important; font-weight: 800; }
+
+/* primary button: black w/ white text (light) · yellow w/ black text (dark) */
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; filter: none; }
+.btn-primary:hover { background: var(--accent-2); filter: none; transform: translateY(-1px); }
+[data-theme="dark"] .btn-primary { color: #16181d; }
+[data-theme="dark"] .btn-primary:hover { background: var(--hl-strong); }
+
+/* success keeps its own green; danger its red — only tidy the hovers */
+.btn-success { background: #1f8a46; border-color: #1f8a46; color: #fff; }
+.btn-success:hover { filter: brightness(1.06); }
+
+/* segmented control: active = accent chip with correct contrast both themes */
+.seg-btn.active { background: var(--accent); color: var(--surface); box-shadow: var(--shadow); }
+.seg-btn.active .icon { color: var(--surface); }
+.seg-soft .seg-btn.active { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); }
+
+/* nav: active/open item gets a yellow underline highlight */
+.nav-link.active { color: var(--text); }
+.nav-item.open .nav-link, .nav-link:hover { background: var(--surface-2); color: var(--text); }
+.nav-item .nav-link { position: relative; }
+.nav-link.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 4px; height: 2px; background: var(--hl); border-radius: 2px; }
+
+/* yellow highlight touches */
+.stat::after { background: var(--hl) !important; opacity: 1 !important; }
+.sec-head .sec-line { background: var(--border); }
+.notif-badge { background: var(--hl); color: #16181d; }
+.switch input:checked + .slider { background: var(--accent); border-color: transparent; }
+.tbl tr:hover td { background: var(--surface-2); }
+a { color: var(--text); }
+a:hover { color: #000; }
+[data-theme="dark"] a:hover { color: var(--hl); }
+
+/* avatars / current-chain step: accent bg with flipping text colour */
+.avatar { background: var(--surface-3); color: var(--text); }
+.chain-step.s-current .ci { background: var(--accent); color: var(--surface); }
