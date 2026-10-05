@@ -1,5 +1,5 @@
 /* ============================================================
-   JustWords Associates' Portal — SPA client
+   Justwords Associates' Portal — SPA client
    ============================================================ */
 'use strict';
 
@@ -48,6 +48,8 @@ const ICONS = {
   unlock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.9-1"/>',
   toggle: '<rect x="1" y="6" width="22" height="12" rx="6"/><circle cx="16" cy="12" r="3"/>',
   smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
+  trash: '<path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/>',
 };
 function icon(name, cls) { return `<svg class="icon ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`; }
 
@@ -76,6 +78,9 @@ function avatarHTML(u, size) {
 }
 function fmtDate(s) { if (!s) return '—'; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
 function roleLabel(r) { return ({ ceo: 'CEO', director: 'Director', hr_admin: 'HR Admin', hr: 'HR', manager: 'Manager', employee: 'Associate' }[r] || r); }
+// Whoever manages a team or sits in leadership/HR can open the Team Performance view.
+function canSeeTeam(me) { return !!me && (me.is_manager || ['manager', 'director', 'ceo', 'hr', 'hr_admin'].includes(me.role)); }
+function canManageAssets(me) { return !!me && ['hr', 'hr_admin', 'director', 'ceo'].includes(me.role); }
 
 // ------------------------------------------------- toast + modal
 function toast(msg, kind) {
@@ -120,7 +125,10 @@ const NAV = [
   { label: 'Performance', icon: 'chart', items: [
     { t: 'KPI Incentive Plan', r: '#/kpi', i: 'chart' },
     { t: 'Appraisal', r: '#/appraisal', i: 'target' },
-    { t: 'Team Performance', r: '#/team', i: 'users' },
+  ] },
+  { label: 'Asset Tracking Tool', icon: 'box', show: canManageAssets, items: [
+    { t: 'Asset Register', r: '#/assets', i: 'box' },
+    { t: 'Asset Audit', r: '#/asset-audit', i: 'shield' },
   ] },
 ];
 
@@ -134,7 +142,7 @@ const app = () => document.getElementById('app');
 
 function renderShell(content) {
   const me = State.me;
-  const navHTML = NAV.map((g, gi) => `
+  const navHTML = NAV.filter(g => !g.show || g.show(me)).map((g, gi) => `
     <div class="nav-item" data-navitem="${gi}">
       <button class="nav-link">${icon(g.icon, 'icon-sm')}${g.label}${icon('chevron', 'icon-sm')}</button>
       <div class="dropdown">
@@ -153,7 +161,7 @@ function renderShell(content) {
     <button class="icon-btn nav-toggle" id="navToggle">${icon('menu')}</button>
     <a href="#/dashboard" class="brand">
       <span class="logo">JW</span>
-      <span>JustWords<small>Associates' Portal</small></span>
+      <span>Justwords<small>Associates' Portal</small></span>
     </a>
     <nav class="nav" id="mainNav">${navHTML}</nav>
     <div class="spacer"></div>
@@ -257,6 +265,29 @@ function toggleTheme() {
 function view() { return document.getElementById('view'); }
 function setView(html) { const v = view(); if (v) v.innerHTML = html; }
 
+// ------------------------------------------------- password field with show/hide toggle
+// Renders a password <input> wrapped with an eye button. Pair with wirePwToggles()
+// after the markup is in the DOM to make the toggle live.
+function pwField(id, label, attrs = '') {
+  return `<div class="field"><label>${esc(label)}</label>
+    <div class="pw-wrap">
+      <input type="password" id="${id}" ${attrs}>
+      <button type="button" class="pw-eye" data-pwtoggle="${id}" title="Show password" aria-label="Show password">${icon('eye', 'icon-sm')}</button>
+    </div></div>`;
+}
+function wirePwToggles(root) {
+  (root || document).querySelectorAll('[data-pwtoggle]').forEach(btn => {
+    btn.onclick = () => {
+      const input = document.getElementById(btn.dataset.pwtoggle);
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.classList.toggle('on', show);
+      btn.title = btn.ariaLabel = show ? 'Hide password' : 'Show password';
+    };
+  });
+}
+
 // ------------------------------------------------- status badge helper
 function statusBadge(status) {
   const map = {
@@ -274,20 +305,20 @@ function renderLogin() {
   app().innerHTML = `
   <div class="auth-wrap">
     <div class="auth-brand">
-      <div class="mark"><span class="logo" style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;">JW</span> JustWords</div>
+      <div class="mark"><span class="logo" style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;">JW</span> Justwords</div>
       <div>
         <h1>Associates'<br>Portal</h1>
         <p>Together we create content-driven, transformational digital journeys for our customers — and a single home for KPIs, appraisals, policies and the people behind the work.</p>
       </div>
-      <div class="foot">JustWords Collaborative Knowledge Center · Internal use only</div>
+      <div class="foot">Justwords Collaborative Knowledge Center · Internal use only</div>
     </div>
     <div class="auth-panel">
       <div class="auth-card">
         <h2>Sign in</h2>
-        <p class="sub">Use your JustWords work email to continue.</p>
+        <p class="sub">Use your Justwords work email to continue.</p>
         <form id="loginForm">
           <div class="field"><label>Work email</label><input type="email" id="email" placeholder="name@justwords.in" autocomplete="username" required></div>
-          <div class="field"><label>Password</label><input type="password" id="password" placeholder="Enter password" autocomplete="current-password" required></div>
+          ${pwField('password', 'Password', 'placeholder="Enter password" autocomplete="current-password" required')}
           <div class="form-error" id="loginErr"></div>
           <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px" type="submit">Sign in ${icon('arrow', 'icon-sm')}</button>
         </form>
@@ -298,6 +329,7 @@ function renderLogin() {
       </div>
     </div>
   </div>`;
+  wirePwToggles();
   document.getElementById('loginForm').onsubmit = async e => {
     e.preventDefault();
     const err = document.getElementById('loginErr'); err.textContent = '';
@@ -319,13 +351,14 @@ function renderPassword() {
     <p>${forced ? 'Choose a new password to finish setting up your account.' : 'Update your account password.'}</p></div></div>
     <div class="card card-pad">
       <form id="pwForm">
-        ${forced ? '' : '<div class="field"><label>Current password</label><input type="password" id="cur" required></div>'}
-        <div class="field"><label>New password</label><input type="password" id="np" minlength="6" required></div>
-        <div class="field"><label>Confirm new password</label><input type="password" id="cp" minlength="6" required></div>
+        ${forced ? '' : pwField('cur', 'Current password', 'required')}
+        ${pwField('np', 'New password', 'minlength="6" required')}
+        ${pwField('cp', 'Confirm new password', 'minlength="6" required')}
         <div class="form-error" id="pwErr"></div>
         <button class="btn btn-primary" type="submit">Save password</button>
       </form>
     </div></div>`);
+  wirePwToggles();
   document.getElementById('pwForm').onsubmit = async e => {
     e.preventDefault();
     const err = document.getElementById('pwErr'); err.textContent = '';
@@ -355,7 +388,7 @@ function greeting() {
 // of destinations already lives in the top nav — this is just the fast lane.
 const QUICK_LINKS = [
   { t: 'Tools & Access',  d: 'Apps & logins you use daily', r: '#/page/tools',    i: 'grid',     c: 'chip-indigo' },
-  { t: 'Team Directory',  d: 'Find anyone at JustWords',     r: '#/directory',     i: 'users',    c: 'chip-violet' },
+  { t: 'Team Directory',  d: 'Find anyone at Justwords',     r: '#/directory',     i: 'users',    c: 'chip-violet' },
   { t: 'Apply for Leave', d: 'Request & track time off',     r: '#/leave',         i: 'calendar', c: 'chip-amber'  },
   { t: 'HR Handbook',     d: 'Policies, schemes & how-tos',  r: '#/page/handbook', i: 'book',     c: 'chip-teal'   },
 ];
@@ -426,7 +459,7 @@ async function renderDashboard() {
       <div class="side-title">We’re hiring</div>
       ${openRoles.map(v => `<a class="qrow" href="#/vacancies"><span class="chip chip-pink">${icon('brief')}</span>
         <span><span class="qr-t" style="display:block">${esc(v.title)}</span>
-        <span class="qr-d">${esc([v.department, v.location].filter(Boolean).join(' · ')) || 'JustWords'}</span></span>
+        <span class="qr-d">${esc([v.department, v.location].filter(Boolean).join(' · ')) || 'Justwords'}</span></span>
         <span class="qgo">${icon('arrow', 'icon-sm')}</span></a>`).join('')}
     </div>` : '';
 
@@ -447,11 +480,20 @@ async function renderDashboard() {
       <div class="hero-meta"><div class="d1">${esc(dayNum)}</div><div class="d2">${esc(dayCtx)}</div></div>
       <div class="eyebrow">${icon('sun', 'icon-sm')} ${greeting()}</div>
       <h1>Hi ${esc(me.name.split(' ')[0])}, welcome back 👋</h1>
-      <p class="hero-sub">${esc([me.designation, me.department].filter(Boolean).join(' · ') || 'JustWords Associate')} — here’s what’s happening at JustWords today.</p>
+      <p class="hero-sub">${esc([me.designation, me.department].filter(Boolean).join(' · ') || 'Justwords Associate')} — here’s what’s happening at Justwords today.</p>
       <div class="hero-actions">
         <a class="btn btn-glass solid" href="#/page/tools">${icon('grid', 'icon-sm')}Explore tools</a>
         <a class="btn btn-glass" href="#/directory">${icon('users', 'icon-sm')}Team directory</a>
       </div>
+    </div>
+
+    <div class="train-banner">
+      <div>
+        <div class="tb-eyebrow">${icon('book', 'icon-sm')} Learn &amp; grow</div>
+        <h2>Justwords <span class="hl">Training Centre</span><br>— a dedicated portal for Justwordians.</h2>
+        <p>Guides, playbooks and skill-building resources, all in one place. Level up your craft and keep growing with us.</p>
+      </div>
+      <div class="tb-badge">JW</div>
     </div>
 
     ${inboxHTML}
@@ -476,7 +518,7 @@ async function renderDashboard() {
     <div class="sec-head"><h2>${icon('bulb', 'section-icon')}Your voice matters</h2><span class="sec-line"></span></div>
     <div class="callout">
       <span class="chip chip-rose">${icon('bulb')}</span>
-      <div class="callout-body"><h3>Have an idea to make JustWords better?</h3>
+      <div class="callout-body"><h3>Have an idea to make Justwords better?</h3>
         <p>Share feedback, suggestions or concerns with HR — anonymously if you prefer.</p></div>
       <a class="btn btn-primary" href="#/suggestions">${icon('send', 'icon-sm')}Share an idea</a>
     </div>
@@ -623,6 +665,7 @@ function paintForm() {
       <div style="text-align:right">
         ${statusBadge(f.status)}
         <div class="muted" style="margin-top:6px">Submitted ${f.submit_count} time${f.submit_count === 1 ? '' : 's'}</div>
+        ${isKPI && canSeeTeam(me) ? `<div style="margin-top:10px"><a class="btn btn-sm" href="#/team">${icon('users', 'icon-sm')}Team Performance</a></div>` : ''}
       </div>
     </div>
 
@@ -672,7 +715,13 @@ function paintForm() {
       </div>
     </div>
 
-    <div class="card card-pad"><div class="card-title" style="margin-bottom:6px">${icon('info', 'section-icon')}Manager Comments</div>${mgrComments}</div>
+    <div class="card card-pad"><div class="card-title" style="margin-bottom:6px">${icon('info', 'section-icon')}Manager Comments</div>${mgrComments}
+      ${managerEditing ? `<div style="margin-top:14px">
+        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Add / update your comment for ${f.quarter}</label>
+        <textarea id="mgrQComment" rows="3" placeholder="Write a comment for ${esc(owner.name)} on their ${f.quarter} form…">${esc((data.managerComments[f.quarter] || {}).text || '')}</textarea>
+        <p class="muted" style="margin-top:6px">Saved when you click “Save (manager edit)”, or when you approve / send back below.</p>
+      </div>` : ''}
+    </div>
 
     ${f.history.length ? `<div class="card card-pad"><div class="card-title" style="margin-bottom:14px">${icon('clock', 'section-icon')}Approval Timeline</div>
       <div class="timeline">${f.history.map(h => `<div class="tl-item"><div class="who">${esc(h.actor_name)} · ${actionLabel(h.action)}</div><div class="meta">${fmtDate(h.at)}</div>${h.comment ? `<div class="cmt">${esc(h.comment)}</div>` : ''}</div>`).join('')}</div>
@@ -711,8 +760,8 @@ function renderRows(rows, editable) {
       <td><input class="kpi-num" data-k="ytd" ${editable ? '' : 'readonly'} value="${esc(r.ytd || '')}"></td>
       <td><input class="kpi-num" data-k="${q}" ${editable ? '' : 'readonly'} value="${esc(r[q] || '')}"></td>
       <td><textarea rows="2" data-k="comments" ${editable ? '' : 'readonly'}>${esc(r.comments || '')}</textarea></td>
-      <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="muted">${esc(r.doc.name || 'file').slice(0, 14)}</a>` : `<span class="muted">—</span>`}
-        ${editable ? `<input type="file" data-file="${i}" style="font-size:10px;width:90px;margin-top:4px">` : ''}</td>
+      <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="muted" title="${esc(r.doc.name || 'file')}">${icon('file', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 14)}</a>` : `<span class="muted">—</span>`}
+        ${editable ? `<label class="muted" style="display:block;font-size:10px;margin-top:4px">${r.doc ? 'Replace' : 'Attach'} document<input type="file" data-file="${i}" style="font-size:10px;width:100px;margin-top:2px"></label>` : ''}</td>
       ${editable ? `<td>${r.locked ? '' : `<button class="icon-btn btn-sm" data-del="${i}" title="Remove">${icon('x', 'icon-sm')}</button>`}</td>` : ''}
     </tr>`;
   });
@@ -729,6 +778,14 @@ function collectData() {
   const dob = document.getElementById('fi_dob'); if (dob) data.employee.dob = dob.value;
   const doj = document.getElementById('fi_doj'); if (doj) data.employee.doj = doj.value;
   data.employee.financialYear = FormCtx.fy;
+  // Inline manager comment for the current quarter (managers/ancestors only).
+  const mqc = document.getElementById('mgrQComment');
+  if (mqc) {
+    data.managerComments = data.managerComments || {};
+    const txt = mqc.value.trim();
+    if (txt) data.managerComments[FormCtx.quarter] = { by: State.me.name, text: txt, at: new Date().toISOString() };
+    else delete data.managerComments[FormCtx.quarter];
+  }
   return data;
 }
 
@@ -776,10 +833,15 @@ function wireForm() {
     } catch (ex) { toast(ex.message, 'err'); }
   };
 
+  // Managers in the chain carry their in-form edits + row comments along with the action.
+  const kpiPayload = () => {
+    const data = collectData();
+    return { data, auto_score: computeAuto(data.rows), final_score: numOrNull((document.getElementById('finalScore') || {}).value) };
+  };
   const approveBtn = document.getElementById('approveBtn');
-  if (approveBtn) approveBtn.onclick = () => approveModal(f);
+  if (approveBtn) approveBtn.onclick = () => approveModal(f, f.rights.isAncestor && !f.rights.isOwner ? kpiPayload : null);
   const sendbackBtn = document.getElementById('sendbackBtn');
-  if (sendbackBtn) sendbackBtn.onclick = () => sendbackModal(f);
+  if (sendbackBtn) sendbackBtn.onclick = () => sendbackModal(f, f.rights.isAncestor && !f.rights.isOwner ? kpiPayload : null);
 }
 
 function wireRowEvents() {
@@ -818,27 +880,33 @@ async function saveForm(msg) {
   } catch (ex) { toast(ex.message, 'err'); }
 }
 
-function approveModal(f) {
+// `getPayload` (optional) returns { data, auto_score, final_score } so a manager's
+// in-form edits ride along with the approve/send-back action and persist for the owner.
+function approveModal(f, getPayload) {
   modal('Approve & forward', `<div class="field"><label>Manager comment for ${f.quarter} (optional)</label><textarea id="mgrCmt" rows="3" placeholder="Add a note for the associate…"></textarea></div>
     <div class="field"><label>Approval note (optional)</label><input id="apCmt" placeholder="Looks good"></div>
     <p class="muted">Approving forwards this form to the next person in the chain. After the final approver (CEO) it becomes locked and marked approved.</p>`,
     `<button class="btn" data-close>Cancel</button><button class="btn btn-success" id="doApprove">${icon('check', 'icon-sm')}Approve</button>`);
   document.getElementById('doApprove').onclick = async () => {
     try {
-      await api('/form/' + f.id + '/approve', { method: 'POST', body: { comment: document.getElementById('apCmt').value, managerComment: document.getElementById('mgrCmt').value } });
+      const body = { comment: document.getElementById('apCmt').value, managerComment: document.getElementById('mgrCmt').value };
+      if (getPayload) Object.assign(body, getPayload());
+      await api('/form/' + f.id + '/approve', { method: 'POST', body });
       closeModal(); toast('Approved & forwarded', 'ok'); loadFormById(f.id);
     } catch (ex) { toast(ex.message, 'err'); }
   };
 }
-function sendbackModal(f) {
+function sendbackModal(f, getPayload) {
   modal('Send back for revision', `<div class="field"><label>Reason / instructions <span style="color:var(--danger)">*</span></label><textarea id="sbCmt" rows="4" placeholder="Explain what needs to change…"></textarea></div>
-    <p class="muted">The form returns to ${esc(f.owner.name)} for editing and re-submission from the start of the chain.</p>`,
+    <p class="muted">The form returns to ${esc(f.owner.name)} for editing and re-submission from the start of the chain. Any edits or comments you made above are saved and sent back with it.</p>`,
     `<button class="btn" data-close>Cancel</button><button class="btn btn-danger" id="doSendback">Send back</button>`);
   document.getElementById('doSendback').onclick = async () => {
     const c = document.getElementById('sbCmt').value.trim();
     if (!c) { toast('Please add a reason', 'err'); return; }
     try {
-      await api('/form/' + f.id + '/sendback', { method: 'POST', body: { comment: c } });
+      const body = { comment: c };
+      if (getPayload) Object.assign(body, getPayload());
+      await api('/form/' + f.id + '/sendback', { method: 'POST', body });
       closeModal(); toast('Sent back', 'ok'); loadFormById(f.id);
     } catch (ex) { toast(ex.message, 'err'); }
   };
@@ -1217,7 +1285,7 @@ function downloadAppraisal(f) {
     <h1>Annual Appraisal — ${esc(owner.name)}</h1>
     <p class="meta">${esc(owner.designation || '')} · ${esc(owner.department || '')} · ${esc(f.fy)} · Status: ${esc(f.status)}</p>
     ${body}
-    <p class="meta" style="margin-top:32px">Generated from the JustWords Associates' Portal on ${new Date().toLocaleString('en-IN')}.</p>
+    <p class="meta" style="margin-top:32px">Generated from the Justwords Associates' Portal on ${new Date().toLocaleString('en-IN')}.</p>
     </body></html>`;
   const blob = new Blob([html], { type: 'text/html' });
   const a = document.createElement('a');
@@ -1242,12 +1310,22 @@ async function renderInbox() {
 }
 async function renderTeam() {
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
-  const type = 'kpi';
-  const { forms } = await api('/forms?type=' + type + '&fy=FY2026-27');
-  const team = forms.filter(f => f.owner.id !== State.me.id);
-  setView(`<div class="page"><div class="page-head"><div><div class="crumb">Team</div><h1>Team performance forms</h1>
-    <p>KPI forms across your reporting tree · FY2026-27</p></div></div>
-    ${team.length ? tableOfForms(team, false) : `<div class="card"><div class="empty">${icon('users')}No team forms yet.</div></div>`}
+  // Pull both KPI and Appraisal forms so submitted self-appraisals surface here too.
+  const [kpiRes, aprRes] = await Promise.all([
+    api('/forms?type=kpi&fy=FY2026-27').catch(() => ({ forms: [] })),
+    api('/forms?type=appraisal&fy=FY2026-27').catch(() => ({ forms: [] })),
+  ]);
+  const team = [...kpiRes.forms, ...aprRes.forms]
+    .filter(f => f.owner.id !== State.me.id)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  const awaiting = team.filter(f => f.status === 'in_review' && f.rights && f.rights.canApprove);
+  setView(`<div class="page"><div class="page-head"><div><div class="crumb">Performance · Team</div><h1>Team performance</h1>
+    <p>KPI &amp; Appraisal forms across your reporting tree · FY2026-27</p></div></div>
+    ${awaiting.length ? `<div class="sec-head"><h2>${icon('inbox', 'section-icon')}Awaiting your approval</h2>
+      <span class="badge b-review"><span class="dot"></span>${awaiting.length} pending</span></div>
+      ${tableOfForms(awaiting, true)}` : ''}
+    ${team.length ? `<div class="sec-head"><h2>${icon('users', 'section-icon')}All team forms</h2><span class="sec-line"></span></div>${tableOfForms(team, false)}`
+      : `<div class="card"><div class="empty">${icon('users')}No team forms yet.</div></div>`}
   </div>`);
   bindFormRows();
 }
@@ -1268,7 +1346,7 @@ async function renderDirectory() {
   const { users } = await api('/directory');
   const byId = {}; users.forEach(u => byId[u.id] = u);
   setView(`<div class="page"><div class="page-head"><div><div class="crumb">People</div><h1>Team directory</h1>
-    <p>${users.length} associates across JustWords</p></div>
+    <p>${users.length} associates across Justwords</p></div>
     <input id="dirSearch" placeholder="Search name, role, department…" style="padding:9px 13px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);min-width:260px"></div>
     <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Designation</th><th>Department</th><th>Reports to</th><th>Role</th><th></th></tr></thead>
     <tbody id="dirBody">${dirRows(users, byId)}</tbody></table></div></div></div>`);
@@ -1377,7 +1455,7 @@ async function renderVacancies() {
   const { vacancies } = await api('/vacancies');
   const canPost = ['hr', 'hr_admin'].includes(State.me.role);
   setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR Desk</div><h1>Vacancies</h1>
-    <p>Open positions across JustWords — refer great people.</p></div>${canPost ? `<button class="btn btn-primary" id="postVac">${icon('plus', 'icon-sm')}Post vacancy</button>` : ''}</div>
+    <p>Open positions across Justwords — refer great people.</p></div>${canPost ? `<button class="btn btn-primary" id="postVac">${icon('plus', 'icon-sm')}Post vacancy</button>` : ''}</div>
     <div class="grid grid-2">${vacancies.length ? vacancies.map(v => `<div class="card card-pad">
       <div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="card-title">${esc(v.title)}</div>
       <span class="badge ${v.status === 'open' ? 'b-approved' : 'b-draft'}"><span class="dot"></span>${v.status}</span></div>
@@ -1447,7 +1525,7 @@ async function renderAdmin() {
   const { totals, byDept, formStatus, recent } = await api('/admin/stats');
   const stat = (lbl, val, foot) => `<div class="stat"><div class="lbl">${lbl}</div><div class="val">${val}</div>${foot ? `<div class="foot">${foot}</div>` : ''}</div>`;
   setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR Admin</div><h1>Admin console</h1>
-    <p>Usage and workforce overview · JustWords Associates' Portal</p></div></div>
+    <p>Usage and workforce overview · Justwords Associates' Portal</p></div></div>
     <div class="grid grid-4">
       ${stat('Associates', totals.employees)}
       ${stat('Managers', totals.managers)}
@@ -1635,7 +1713,7 @@ async function pollMessages(forceScroll) {
 function newChannelModal() {
   modal('Create a channel', `<div class="field"><label>Channel name</label><input id="chName" placeholder="e.g. content-team" maxlength="40"></div>
     <div class="field"><label>Topic (optional)</label><input id="chTopic" placeholder="What's this channel about?"></div>
-    <p class="muted">Channels are visible to everyone at JustWords. Names are lowercased and hyphenated.</p>`,
+    <p class="muted">Channels are visible to everyone at Justwords. Names are lowercased and hyphenated.</p>`,
     `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="chCreate">Create</button>`);
   document.getElementById('chCreate').onclick = async () => {
     const name = document.getElementById('chName').value.trim();
@@ -1743,6 +1821,153 @@ async function renderFormWindows() {
 }
 
 // =====================================================================
+//  ASSET TRACKING TOOL  (register + audit)
+// =====================================================================
+function canEditAssets(me) { return !!me && ['hr', 'hr_admin'].includes(me.role); }
+const OWN_LABEL = { rent: 'Rent', acquisition: 'Acquisition' };
+
+function assetFormBody(a = {}) {
+  return `
+    <div class="asset-grid">
+      <div class="field"><label>Category of asset</label><input id="as_category" value="${esc(a.category || '')}" placeholder="Laptop, Monitor, Phone…"></div>
+      <div class="field"><label>Asset specification</label><input id="as_specification" value="${esc(a.specification || '')}" placeholder="e.g. Dell i5 / 16GB / 512GB"></div>
+      <div class="field"><label>Asset identity no.</label><input id="as_identity_no" value="${esc(a.identity_no || '')}" placeholder="Serial / IMEI"></div>
+      <div class="field"><label>Asset owned by</label><input id="as_owned_by" value="${esc(a.owned_by || '')}" placeholder="Justwords / vendor"></div>
+      <div class="field"><label>JW asset no.</label><input id="as_jw_asset_no" value="${esc(a.jw_asset_no || '')}" placeholder="JW-0001"></div>
+      <div class="field"><label>Rent / Acquisition</label><select id="as_ownership">
+        <option value="acquisition" ${a.ownership === 'rent' ? '' : 'selected'}>Acquisition</option>
+        <option value="rent" ${a.ownership === 'rent' ? 'selected' : ''}>Rent</option></select></div>
+      <div class="field"><label>Issued to</label><input id="as_issued_to" value="${esc(a.issued_to || '')}" placeholder="Associate / team"></div>
+      <div class="field"><label>Issued on</label><input type="date" id="as_issued_on" value="${esc(a.issued_on || '')}"></div>
+      <div class="field"><label>Asset audit date</label><input type="date" id="as_audit_date" value="${esc(a.audit_date || '')}"></div>
+      <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea id="as_notes" rows="2">${esc(a.notes || '')}</textarea></div>
+    </div>`;
+}
+function readAssetForm() {
+  const g = id => (document.getElementById(id) || {}).value || '';
+  return {
+    category: g('as_category'), specification: g('as_specification'), identity_no: g('as_identity_no'),
+    owned_by: g('as_owned_by'), jw_asset_no: g('as_jw_asset_no'), ownership: g('as_ownership'),
+    issued_to: g('as_issued_to'), issued_on: g('as_issued_on'), audit_date: g('as_audit_date'), notes: g('as_notes'),
+  };
+}
+
+async function renderAssets() {
+  renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
+  let assets = [];
+  try { ({ assets } = await api('/assets')); }
+  catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
+  const canEdit = canEditAssets(State.me);
+  const rows = assets.length ? assets.map(a => `<tr data-asset="${a.id}">
+      <td class="asset-tag"><strong>${esc(a.jw_asset_no || '—')}</strong></td>
+      <td>${esc(a.category || '—')}<div class="muted">${esc(a.specification || '')}</div></td>
+      <td class="asset-tag">${esc(a.identity_no || '—')}</td>
+      <td>${esc(a.owned_by || '—')}<div><span class="pill-own ${a.ownership === 'rent' ? 'rent' : 'acq'}">${OWN_LABEL[a.ownership] || 'Acquisition'}</span></div></td>
+      <td>${esc(a.issued_to || '—')}<div class="muted">${a.issued_on ? 'on ' + esc(fmtDay(a.issued_on)) : ''}</div></td>
+      <td class="muted">${a.audit_date ? esc(fmtDay(a.audit_date)) : '—'}</td>
+      ${canEdit ? `<td style="white-space:nowrap">
+        <button class="icon-btn btn-sm" data-edit="${a.id}" title="Edit">${icon('edit', 'icon-sm')}</button>
+        <button class="icon-btn btn-sm" data-del="${a.id}" title="Delete" style="color:var(--danger)">${icon('trash', 'icon-sm')}</button></td>` : ''}
+    </tr>`).join('') : `<tr><td colspan="${canEdit ? 7 : 6}"><div class="empty">${icon('box')}No assets recorded yet.</div></td></tr>`;
+
+  setView(`<div class="page">
+    <div class="page-head"><div><div class="crumb">Asset Tracking Tool</div><h1>Asset Register</h1>
+      <p>Every Justwords asset — what it is, who holds it, and when it's next due for audit.</p></div>
+      ${canEdit ? `<button class="btn btn-primary" id="addAsset">${icon('plus', 'icon-sm')}Add asset</button>` : ''}</div>
+    <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>JW asset no.</th><th>Category / spec</th><th>Identity no.</th><th>Owned by</th><th>Issued to</th><th>Audit date</th>${canEdit ? '<th></th>' : ''}
+    </tr></thead><tbody>${rows}</tbody></table></div></div>
+  </div>`);
+
+  if (canEdit) {
+    const openForm = (a) => {
+      modal(a ? 'Edit asset' : 'Add asset', assetFormBody(a || {}),
+        `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="saveAsset">${icon('send', 'icon-sm')}Save</button>`);
+      document.getElementById('saveAsset').onclick = async () => {
+        try {
+          const body = readAssetForm();
+          if (a) await api('/assets/' + a.id, { method: 'PUT', body });
+          else await api('/assets', { method: 'POST', body });
+          closeModal(); toast('Asset saved', 'ok'); renderAssets();
+        } catch (ex) { toast(ex.message, 'err'); }
+      };
+    };
+    const byId = {}; assets.forEach(a => byId[a.id] = a);
+    const addBtn = document.getElementById('addAsset'); if (addBtn) addBtn.onclick = () => openForm(null);
+    view().querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openForm(byId[b.dataset.edit]));
+    view().querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('Delete this asset and its audit history? This cannot be undone.')) return;
+      try { await api('/assets/' + b.dataset.del, { method: 'DELETE' }); toast('Asset deleted', 'ok'); renderAssets(); }
+      catch (ex) { toast(ex.message, 'err'); }
+    });
+  }
+}
+
+async function renderAssetAudit() {
+  renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
+  let assets = [], audits = [];
+  try { ([{ assets }, { audits }] = await Promise.all([api('/assets'), api('/asset-audits')])); }
+  catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
+  const canEdit = canEditAssets(State.me);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const assetRows = assets.length ? assets.map(a => {
+    const due = a.audit_date && a.audit_date < today;
+    return `<tr>
+      <td class="asset-tag"><strong>${esc(a.jw_asset_no || '—')}</strong></td>
+      <td>${esc(a.category || '—')}<div class="muted">${esc(a.identity_no || '')}</div></td>
+      <td>${esc(a.issued_to || '—')}</td>
+      <td class="${due ? 'audit-due' : 'muted'}">${a.audit_date ? esc(fmtDay(a.audit_date)) : '—'}${due ? ' · overdue' : ''}</td>
+      ${canEdit ? `<td><button class="btn btn-sm" data-audit="${a.id}">${icon('shield', 'icon-sm')}Record audit</button></td>` : ''}
+    </tr>`;
+  }).join('') : `<tr><td colspan="${canEdit ? 5 : 4}"><div class="empty">${icon('box')}No assets to audit yet.</div></td></tr>`;
+
+  const logRows = audits.length ? audits.map(a => `<tr>
+      <td class="muted">${esc(fmtDay(a.audit_date))}</td>
+      <td class="asset-tag">${esc(a.jw_asset_no || a.identity_no || '—')}<div class="muted">${esc(a.category || '')}</div></td>
+      <td>${esc(a.status || '—')}</td><td>${esc(a.condition || '—')}</td>
+      <td>${esc(a.remarks || '')}</td><td class="muted">${esc(a.audited_by_name || '')}</td>
+    </tr>`).join('') : `<tr><td colspan="6"><div class="empty">${icon('file')}No audits recorded yet.</div></td></tr>`;
+
+  setView(`<div class="page">
+    <div class="page-head"><div><div class="crumb">Asset Tracking Tool</div><h1>Asset Audit</h1>
+      <p>Verify each asset's condition and whereabouts, and keep a dated audit trail.</p></div></div>
+    <div class="card"><div class="card-head"><span class="card-title">${icon('box', 'section-icon')}Assets &amp; audit status</span></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr>
+        <th>JW asset no.</th><th>Category</th><th>Issued to</th><th>Audit date</th>${canEdit ? '<th></th>' : ''}
+      </tr></thead><tbody>${assetRows}</tbody></table></div></div>
+    <div class="card" style="margin-top:18px"><div class="card-head"><span class="card-title">${icon('clock', 'section-icon')}Audit history</span></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr>
+        <th>Date</th><th>Asset</th><th>Status</th><th>Condition</th><th>Remarks</th><th>Audited by</th>
+      </tr></thead><tbody>${logRows}</tbody></table></div></div>
+  </div>`);
+
+  if (canEdit) {
+    const byId = {}; assets.forEach(a => byId[a.id] = a);
+    view().querySelectorAll('[data-audit]').forEach(b => b.onclick = () => {
+      const a = byId[b.dataset.audit];
+      modal(`Record audit — ${esc(a.jw_asset_no || a.category || 'asset')}`, `
+        <div class="field"><label>Audit date</label><input type="date" id="au_date" value="${today}"></div>
+        <div class="field"><label>Status</label><select id="au_status">
+          <option>Verified</option><option>Needs repair</option><option>Damaged</option><option>Missing</option></select></div>
+        <div class="field"><label>Condition</label><select id="au_condition">
+          <option>Good</option><option>Fair</option><option>Poor</option></select></div>
+        <div class="field"><label>Remarks</label><textarea id="au_remarks" rows="2" placeholder="Anything worth noting…"></textarea></div>`,
+        `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="saveAudit">${icon('send', 'icon-sm')}Save audit</button>`);
+      document.getElementById('saveAudit').onclick = async () => {
+        try {
+          await api('/asset-audits', { method: 'POST', body: {
+            asset_id: a.id, audit_date: document.getElementById('au_date').value,
+            status: document.getElementById('au_status').value, condition: document.getElementById('au_condition').value,
+            remarks: document.getElementById('au_remarks').value } });
+          closeModal(); toast('Audit recorded', 'ok'); renderAssetAudit();
+        } catch (ex) { toast(ex.message, 'err'); }
+      };
+    });
+  }
+}
+
+// =====================================================================
 //  ROUTER
 // =====================================================================
 function parseHash() {
@@ -1772,6 +1997,8 @@ async function route() {
     if (path.startsWith('/form/')) return loadFormById(path.split('/')[2]);
     if (path === '/inbox') return renderInbox();
     if (path === '/team') return renderTeam();
+    if (path === '/assets') return renderAssets();
+    if (path === '/asset-audit') return renderAssetAudit();
     if (path === '/directory') return renderDirectory();
     if (path.startsWith('/page/')) return renderPage(path.split('/')[2]);
     if (path === '/leave') return renderLeave();

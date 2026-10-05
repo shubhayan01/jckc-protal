@@ -1,8 +1,9 @@
-# JustWords Associates' Portal
+# Justwords Associates' Portal
 
-An internal Employee Management System for JustWords — login, role-based navigation,
+An internal Employee Management System for Justwords — login, role-based navigation,
 a quarterly KPI Incentive Plan + Appraisal workflow with a full manager → director → CEO
-approval chain, HR Desk, SOP documents, leave, vacancies, a suggestion box, and an HR-Admin console.
+approval chain, HR Desk, SOP documents, leave, vacancies, a suggestion box, an Asset Tracking
+Tool (asset register + audit log), and an HR-Admin console.
 Modern dual-theme (light/dark) UI, no external services required.
 
 ## Run it
@@ -20,39 +21,13 @@ First `npm start` creates `portal.db` (SQLite) and seeds all 55 employees from
 
 Requires Node 22.5+ (uses the built-in `node:sqlite` — no native build/compiler needed).
 
-## Deploy to Render
-
-This repo ships a [`render.yaml`](render.yaml) blueprint.
-
-1. Push to GitHub (already done for this repo).
-2. In Render: **New +** → **Blueprint** → connect the repo. Render reads `render.yaml`
-   and creates a free Node web service (`npm install` → `npm start`).
-3. It sets `NODE_ENV=production` and generates a secret `SESSION_SECRET` automatically.
-
-On the **free** plan there is no persistent disk: `portal.db` is recreated and
-reseeded from `seed_employees.json` on every deploy/restart, so the app always
-starts **fresh**. Live-entered KPI/appraisal data and uploaded files are **not** kept.
-
-To persist data, edit `render.yaml`: set `plan: starter`, add a `disk` mounted at
-`/data`, and add an env var `DATA_DIR=/data` (the code already honours `DATA_DIR`
-for both the database and `uploads/`).
-
-### Config (env vars)
-
-| Var | Purpose | Default |
-|-----|---------|---------|
-| `PORT` | Listen port | `3000` |
-| `NODE_ENV` | `production` enables secure cookies + proxy trust | unset |
-| `SESSION_SECRET` | Session signing key | dev fallback |
-| `DATA_DIR` | Base dir for `portal.db` + `uploads/` | project dir |
-
 ## Logins
 
 | Who | Email | Password |
 |-----|-------|----------|
 | **Test user** | `test@justwords.in` | `Test@1234` |
 | Associate (e.g. Meenaxi) | `meenaxi.badola@justwords.in` | `Meenaxi@justword2026` |
-| Reporting Manager | `Saurav.Jha@justwords.in` | `Saurav@justword2026` |
+| Reporting Manager | `C` | `Saurav@justword2026` |
 | Director | `amlan@justwords.in` | `Amlan@justword2026` |
 | CEO | `payel@justwords.in` | `Payel@justword2026` |
 | HR Admin | `rushika.hr@justwords.in` | `Rushika@justword2026` |

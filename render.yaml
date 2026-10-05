@@ -1,4 +1,4 @@
-# Render Blueprint — deploy the JustWords Associates' Portal.
+# Render Blueprint — deploy the Justwords Associates' Portal.
 # In Render: New + -> Blueprint -> connect this repo. It reads this file.
 #
 # Free plan: no persistent disk. The SQLite DB is recreated and reseeded from

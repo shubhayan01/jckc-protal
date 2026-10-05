@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Database layer for the JustWords Associates' Portal.
+ * Database layer for the Justwords Associates' Portal.
  * Uses Node's built-in node:sqlite (no native build needed on Windows).
  * Creates the schema, seeds employees from seed_employees.json, seeds
  * default content pages, and exposes a few helpers used by server.js.
@@ -208,6 +208,39 @@ CREATE TABLE IF NOT EXISTS form_windows (
 );
 `);
 
+// ---------------------------------------------------------------- Asset Tracking Tool
+// An asset register (what we own / rent and who holds it) plus an audit log.
+db.exec(`
+CREATE TABLE IF NOT EXISTS assets (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  category       TEXT,                        -- category of asset (Laptop, Monitor, Phone…)
+  specification  TEXT,                         -- asset specification
+  identity_no    TEXT,                         -- asset identity no. (serial / IMEI)
+  owned_by       TEXT,                         -- asset owned by (Justwords / vendor / leased)
+  jw_asset_no    TEXT,                         -- JW asset no.
+  ownership      TEXT DEFAULT 'acquisition',   -- 'rent' | 'acquisition'
+  issued_to      TEXT,                         -- person/team the asset is issued to
+  issued_on      TEXT,                         -- date issued
+  audit_date     TEXT,                         -- next/last asset audit date
+  notes          TEXT,
+  created_by     INTEGER,
+  created_at     TEXT DEFAULT (datetime('now')),
+  updated_at     TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_audits (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id    INTEGER NOT NULL,
+  audit_date  TEXT,
+  status      TEXT,                            -- Verified | Needs repair | Damaged | Missing
+  condition   TEXT,                            -- Good | Fair | Poor
+  remarks     TEXT,
+  audited_by  INTEGER,
+  created_at  TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(asset_id) REFERENCES assets(id)
+);
+`);
+
 // Seed a couple of default public channels so chat isn't an empty room.
 function seedChannels() {
   const empty = db.prepare('SELECT COUNT(*) c FROM channels').get().c === 0;
@@ -310,19 +343,19 @@ function seedPages() {
     ['company-documents', 'about', 'Company Documents',
       'Central repository for incorporation details, org charts, brand guidelines and other reference documents. HR Admin can attach and update items here.'],
     ['handbook', 'hr', 'Employee Handbook',
-      'The JustWords Handbook covers working hours, code of conduct, communication norms, and expectations for every associate. Read it end to end during onboarding.'],
+      'The Justwords Handbook covers working hours, code of conduct, communication norms, and expectations for every associate. Read it end to end during onboarding.'],
     ['schemes', 'hr', 'Schemes & Benefits',
       'Performance Based Incentive (PBI), referral bonus, learning reimbursement and wellness schemes available to associates on regular payroll.'],
     ['policies', 'hr', 'Policies',
       'Leave policy, POSH policy, IT & data security policy, and remote-work policy. All associates are expected to comply with the latest published versions.'],
     ['leave', 'hr', 'Leave', 'Apply for leave and track approvals from the Leave module.'],
-    ['vacancies', 'hr', 'Vacancies', 'Open positions across JustWords. Refer great people — referral bonuses apply.'],
+    ['vacancies', 'hr', 'Vacancies', 'Open positions across Justwords. Refer great people — referral bonuses apply.'],
     ['sop-hr', 'sop', 'SOP — HR', 'Standard operating procedures for HR: onboarding, attendance, appraisal cycles, exit process.'],
     ['sop-seo', 'sop', 'SOP — SEO', 'Keyword research, on-page checklist, technical audit cadence, reporting standards.'],
     ['sop-content', 'sop', 'SOP — Content', 'Briefing, drafting, editing, QA and publishing workflow with quality gates.'],
     ['sop-webdev', 'sop', 'SOP — Web Dev', 'Ticket intake, staging discipline, QA checklist, deployment and rollback steps.'],
     ['sop-automation', 'sop', 'SOP — Automation', 'Workflow intake, tooling standards, secrets handling, monitoring and handover.'],
-    ['tools', 'tools', 'Tools', 'The stack JustWords associates use day to day — access is provisioned by IT/HR Admin.'],
+    ['tools', 'tools', 'Tools', 'The stack Justwords associates use day to day — access is provisioned by IT/HR Admin.'],
   ];
   const ins = db.prepare('INSERT OR IGNORE INTO pages (slug,section,title,body) VALUES (?,?,?,?)');
   for (const p of pages) ins.run(...p);
@@ -340,14 +373,14 @@ function seedAnnouncements() {
   const empty = db.prepare('SELECT COUNT(*) c FROM announcements').get().c === 0;
   if (!empty) return;
   const a = db.prepare('INSERT INTO announcements (category,title,body,pinned) VALUES (?,?,?,?)');
-  a.run('Announcement', 'Welcome to the refreshed JustWords Portal',
+  a.run('Announcement', 'Welcome to the refreshed Justwords Portal',
     'One home for KPIs, appraisals, policies, leave and the people behind the work. Use Quick access to jump straight to what you need — and check back here for news and updates.', 1);
   a.run('News', 'Q2 FY2026-27 KPI window is now open',
     'Head to Performance → KPI to fill and submit your quarter. It then routes up your reporting line for review and approval.', 0);
   a.run('Event', 'Monthly Town Hall — last Friday, 4:30 PM',
     'Company-wide updates, wins and an open Q&A with leadership. A calendar invite will follow by email.', 0);
   a.run('Celebration', 'The Suggestion Box is live',
-    'Have an idea to make JustWords better? Share feedback or concerns with HR — anonymously if you prefer.', 0);
+    'Have an idea to make Justwords better? Share feedback or concerns with HR — anonymously if you prefer.', 0);
 }
 
 // Allow `node db.js --reseed` to wipe and rebuild (dev convenience).

@@ -1,7 +1,7 @@
 {
   "name": "justwords-associates-portal",
   "version": "1.0.0",
-  "description": "JustWords Associates' Portal - Employee Management System",
+  "description": "Justwords Associates' Portal - Employee Management System",
   "type": "commonjs",
   "main": "server.js",
   "scripts": {

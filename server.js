@@ -1,6 +1,6 @@
 'use strict';
 /*
- * JustWords Associates' Portal — Express server.
+ * Justwords Associates' Portal — Express server.
  * Serves the SPA in /public and a small REST API backed by SQLite.
  */
 const path = require('path');
@@ -348,12 +348,20 @@ app.post('/api/form/:id/approve', requireAuth, (req, res) => {
   const chain = JSON.parse(f.chain || '[]');
   if (chain[f.stage_index] !== req.user.id) return res.status(403).json({ error: 'It is not your turn to approve this form' });
   const comment = req.body.comment || '';
-  // persist a manager comment for the quarter if provided
+  const isAncestor = ancestorIds(f.user_id).has(req.user.id);
+  // Persist the approver's in-form edits (field changes + row comments) and/or a
+  // per-quarter manager comment, so the associate actually sees them afterwards.
+  let data = JSON.parse(f.data || '{}');
+  let dataChanged = false;
+  if (req.body.data && isAncestor) { data = req.body.data; dataChanged = true; }
   if (req.body.managerComment) {
-    const data = JSON.parse(f.data || '{}');
     data.managerComments = data.managerComments || {};
     data.managerComments[f.quarter] = { by: req.user.name, text: req.body.managerComment, at: new Date().toISOString() };
-    db.prepare('UPDATE forms SET data=? WHERE id=?').run(JSON.stringify(data), f.id);
+    dataChanged = true;
+  }
+  if (dataChanged) {
+    db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?')
+      .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
   }
   const next = f.stage_index + 1;
   if (next >= chain.length) {
@@ -375,6 +383,12 @@ app.post('/api/form/:id/sendback', requireAuth, (req, res) => {
   const chain = JSON.parse(f.chain || '[]');
   if (chain[f.stage_index] !== req.user.id) return res.status(403).json({ error: 'It is not your turn to review this form' });
   const comment = req.body.comment || 'Please revise and resubmit.';
+  // Persist the manager's in-form edits (field changes + row comments) before returning
+  // the form, so the associate sees exactly what the manager changed.
+  if (req.body.data && ancestorIds(f.user_id).has(req.user.id)) {
+    db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?')
+      .run(JSON.stringify(req.body.data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
+  }
   db.prepare("UPDATE forms SET status='sent_back', stage_index=-1, locked=0, updated_at=datetime('now') WHERE id=?").run(f.id);
   db.prepare('INSERT INTO approvals (form_id,actor_id,action,stage,comment) VALUES (?,?,?,?,?)').run(f.id, req.user.id, 'send_back', null, comment);
   notify(f.user_id, `${req.user.name} sent back your ${f.type.toUpperCase()} ${f.quarter}: ${comment}`, '#/form/' + f.id, 'sent_back');
@@ -609,6 +623,69 @@ app.delete('/api/announcements/:id', requireAuth, requireRole('hr', 'hr_admin'),
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------- Asset Tracking Tool
+// Viewable by HR + leadership; editable by HR roles only.
+const canViewAssets = (u) => isHR(u) || ['ceo', 'director'].includes(u.role);
+function requireAssetView(req, res, next) {
+  if (!canViewAssets(req.user)) return res.status(403).json({ error: 'Not allowed to view assets' });
+  next();
+}
+const ASSET_FIELDS = ['category', 'specification', 'identity_no', 'owned_by', 'jw_asset_no', 'ownership', 'issued_to', 'issued_on', 'audit_date', 'notes'];
+function cleanAsset(body) {
+  const a = {};
+  for (const k of ASSET_FIELDS) a[k] = body[k] != null ? String(body[k]).slice(0, 500) : '';
+  a.ownership = a.ownership === 'rent' ? 'rent' : 'acquisition';
+  return a;
+}
+
+app.get('/api/assets', requireAuth, requireAssetView, (req, res) => {
+  const assets = db.prepare('SELECT * FROM assets ORDER BY updated_at DESC, id DESC').all();
+  res.json({ assets });
+});
+app.post('/api/assets', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+  const a = cleanAsset(req.body || {});
+  if (!a.category && !a.jw_asset_no && !a.identity_no)
+    return res.status(400).json({ error: 'Add at least a category or an asset number' });
+  const info = db.prepare(`INSERT INTO assets (category,specification,identity_no,owned_by,jw_asset_no,ownership,issued_to,issued_on,audit_date,notes,created_by)
+    VALUES (@category,@specification,@identity_no,@owned_by,@jw_asset_no,@ownership,@issued_to,@issued_on,@audit_date,@notes,@created_by)`)
+    .run({ ...a, created_by: req.user.id });
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+app.put('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+  const f = db.prepare('SELECT * FROM assets WHERE id=?').get(Number(req.params.id));
+  if (!f) return res.status(404).json({ error: 'Asset not found' });
+  const a = cleanAsset(req.body || {});
+  db.prepare(`UPDATE assets SET category=@category,specification=@specification,identity_no=@identity_no,owned_by=@owned_by,
+    jw_asset_no=@jw_asset_no,ownership=@ownership,issued_to=@issued_to,issued_on=@issued_on,audit_date=@audit_date,notes=@notes,
+    updated_at=datetime('now') WHERE id=@id`).run({ ...a, id: f.id });
+  res.json({ ok: true });
+});
+app.delete('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+  const id = Number(req.params.id);
+  db.prepare('DELETE FROM asset_audits WHERE asset_id=?').run(id);
+  db.prepare('DELETE FROM assets WHERE id=?').run(id);
+  res.json({ ok: true });
+});
+
+// Audit log: list audit entries (optionally for one asset) and record a new one.
+app.get('/api/asset-audits', requireAuth, requireAssetView, (req, res) => {
+  const rows = db.prepare(`SELECT aa.*, u.name AS audited_by_name, a.category, a.jw_asset_no, a.identity_no, a.issued_to
+    FROM asset_audits aa LEFT JOIN users u ON u.id=aa.audited_by LEFT JOIN assets a ON a.id=aa.asset_id
+    ORDER BY aa.created_at DESC`).all();
+  res.json({ audits: rows });
+});
+app.post('/api/asset-audits', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+  const assetId = Number(req.body.asset_id);
+  const asset = db.prepare('SELECT * FROM assets WHERE id=?').get(assetId);
+  if (!asset) return res.status(404).json({ error: 'Asset not found' });
+  const auditDate = String(req.body.audit_date || '').slice(0, 40) || new Date().toISOString().slice(0, 10);
+  db.prepare('INSERT INTO asset_audits (asset_id,audit_date,status,condition,remarks,audited_by) VALUES (?,?,?,?,?,?)')
+    .run(assetId, auditDate, String(req.body.status || '').slice(0, 60), String(req.body.condition || '').slice(0, 60), String(req.body.remarks || '').slice(0, 1000), req.user.id);
+  // Keep the asset's headline audit date in sync with its latest audit.
+  db.prepare("UPDATE assets SET audit_date=?, updated_at=datetime('now') WHERE id=?").run(auditDate, assetId);
+  res.json({ ok: true });
+});
+
 // ---------------------------------------------------------------- HR admin usage/stats
 app.get('/api/admin/stats', requireAuth, requireRole('hr_admin'), (req, res) => {
   const totals = {
@@ -769,5 +846,5 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => {
-  console.log(`\n  JustWords Associates' Portal running at http://localhost:${PORT}\n`);
+  console.log(`\n  Justwords Associates' Portal running at http://localhost:${PORT}\n`);
 });
