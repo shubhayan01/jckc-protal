@@ -611,7 +611,19 @@ function currentData() {
   if (!d.rows || !d.rows.length) d.rows = defaultData(FormCtx.type).rows;
   if (!d.employee) d.employee = { financialYear: FormCtx.fy };
   if (!d.managerComments) d.managerComments = {};
+  // Normalize each quarter's comments to a per-manager list (migrate legacy single objects).
+  for (const q of Object.keys(d.managerComments)) {
+    const v = d.managerComments[q];
+    if (v && !Array.isArray(v)) d.managerComments[q] = v.text ? [v] : [];
+  }
   return d;
+}
+
+// Manager comments for a quarter, as a list (handles legacy single-object shape).
+function mgrCommentList(data, q) {
+  const v = (data.managerComments || {})[q];
+  if (!v) return [];
+  return Array.isArray(v) ? v : (v.text ? [v] : []);
 }
 
 function computeAuto(rows) {
@@ -666,11 +678,17 @@ function paintForm() {
 
   const qtabs = ['Q1', 'Q2', 'Q3', 'Q4'].map(q => `<button class="qtab ${q === f.quarter ? 'active' : ''}" data-q="${q}">${q}</button>`).join('');
 
-  // manager comment blocks
-  const mgrComments = ['Q1', 'Q2', 'Q3', 'Q4'].map(q => {
-    const c = data.managerComments[q];
-    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)"><strong style="font-size:13px">${q} — Manager Comment</strong>
-      <div class="muted" style="margin-top:3px">${c ? esc(c.text) + ' — ' + esc(c.by) : 'No manager comment yet for ' + q + '.'}</div></div>`;
+  // manager comment blocks — one entry per manager per quarter, each attributed by name.
+  const quartersToShow = isKPI ? ['Q1', 'Q2', 'Q3', 'Q4'] : [f.quarter];
+  const mgrComments = quartersToShow.map(q => {
+    const list = mgrCommentList(data, q);
+    return `<div class="mc-q">
+      <div class="mc-q-label">${isKPI ? q + ' — ' : ''}Manager comments</div>
+      ${list.length ? list.map(c => `<div class="mc-item">
+          <span class="mc-avatar">${esc(initials(c.by))}</span>
+          <div><div class="mc-by">${esc(c.by)}</div><div class="mc-text">${esc(c.text)}</div></div>
+        </div>`).join('') : `<div class="muted" style="padding:4px 0">No manager comment yet.</div>`}
+    </div>`;
   }).join('');
 
   renderShell(`<div class="page">
@@ -732,11 +750,14 @@ function paintForm() {
       </div>
     </div>
 
-    <div class="card card-pad"><div class="card-title" style="margin-bottom:6px">${icon('info', 'section-icon')}Manager Comments</div>${mgrComments}
-      ${managerEditing ? `<div style="margin-top:14px">
-        <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">Add / update your comment for ${f.quarter}</label>
-        <textarea id="mgrQComment" rows="3" placeholder="Write a comment for ${esc(owner.name)} on their ${f.quarter} form…">${esc((data.managerComments[f.quarter] || {}).text || '')}</textarea>
-        <p class="muted" style="margin-top:6px">Saved when you click “Save (manager edit)”, or when you approve / send back below.</p>
+    <div class="card card-pad"><div class="card-title" style="margin-bottom:10px">${icon('info', 'section-icon')}Manager Comments</div>${mgrComments}
+      ${managerEditing ? `<div class="mc-compose">
+        <label class="mc-compose-label">${icon('pen', 'icon-sm')}Your comment${isKPI ? ' for ' + f.quarter : ''} <span class="muted">(as ${esc(me.name)}, ${esc(roleLabel(me.role))})</span></label>
+        <textarea id="mgrQComment" rows="3" placeholder="Write your comment for ${esc(owner.name)}…">${esc((mgrCommentList(data, f.quarter).find(c => c.byId === me.id) || {}).text || '')}</textarea>
+        <div class="mc-compose-foot">
+          <span class="muted">Visible to ${esc(owner.name)}. Your comment is kept separately — later approvers can't overwrite it.</span>
+          <button class="btn btn-sm btn-primary" id="saveMgrComment">${icon('send', 'icon-sm')}Save comment</button>
+        </div>
       </div>` : ''}
     </div>
 
@@ -744,15 +765,16 @@ function paintForm() {
       <div class="timeline">${f.history.map(h => `<div class="tl-item"><div class="who">${esc(h.actor_name)} · ${actionLabel(h.action)}</div><div class="meta">${fmtDate(h.at)}</div>${h.comment ? `<div class="cmt">${esc(h.comment)}</div>` : ''}</div>`).join('')}</div>
     </div>` : ''}
 
-    <div class="card card-pad"><div class="toolbar">
+    ${isKPI ? `<p class="muted" style="margin:18px 2px 0">Note: The Performance Based Incentive (PBI) is payable only if the Mandatory Team Objectives (overall company performance) are fully achieved, and is disbursed with the April salary for associates on regular payroll. Not applicable during training, probation or notice period.</p>` : ''}
+
+    ${(editable && f.rights.isOwner) || managerEditing || (f.rights.isOwner && (f.status === 'draft' || f.status === 'sent_back')) || f.rights.canApprove ? `
+    <div class="card card-pad form-action-bar"><div class="toolbar">
       ${editable && f.rights.isOwner ? `<button class="btn" id="saveDraft">${icon('edit', 'icon-sm')}Save draft</button>` : ''}
-      ${managerEditing ? `<button class="btn" id="saveMgr">${icon('edit', 'icon-sm')}Save (manager edit)</button>` : ''}
+      ${managerEditing ? `<button class="btn" id="saveMgr">${icon('edit', 'icon-sm')}Save changes</button>` : ''}
       ${f.rights.isOwner && (f.status === 'draft' || f.status === 'sent_back') ? `<button class="btn btn-primary" id="submitBtn">${icon('send', 'icon-sm')}${f.submit_count ? 'Resubmit for review' : 'Submit for review'}</button>` : ''}
       ${f.rights.canApprove ? `<button class="btn btn-success right" id="approveBtn">${icon('check', 'icon-sm')}Approve & forward</button>
         <button class="btn btn-danger" id="sendbackBtn">${icon('arrow', 'icon-sm')}Send back</button>` : ''}
-    </div>
-    <p class="muted" style="margin-top:14px">Note: The Performance Based Incentive (PBI) is payable only if the Mandatory Team Objectives (overall company performance) are fully achieved, and is disbursed with the April salary for associates on regular payroll. Not applicable during training, probation or notice period.</p>
-    </div>
+    </div></div>` : ''}
   </div>`);
 
   wireForm();
@@ -795,13 +817,20 @@ function collectData() {
   const dob = document.getElementById('fi_dob'); if (dob) data.employee.dob = dob.value;
   const doj = document.getElementById('fi_doj'); if (doj) data.employee.doj = doj.value;
   data.employee.financialYear = FormCtx.fy;
-  // Inline manager comment for the current quarter (managers/ancestors only).
+  // Inline manager comment for the current quarter — upsert THIS manager's own entry,
+  // leaving other managers' comments untouched.
   const mqc = document.getElementById('mgrQComment');
   if (mqc) {
     data.managerComments = data.managerComments || {};
+    let arr = data.managerComments[FormCtx.quarter];
+    if (!Array.isArray(arr)) arr = arr && arr.text ? [arr] : [];
     const txt = mqc.value.trim();
-    if (txt) data.managerComments[FormCtx.quarter] = { by: State.me.name, text: txt, at: new Date().toISOString() };
-    else delete data.managerComments[FormCtx.quarter];
+    const i = arr.findIndex(c => c.byId === State.me.id);
+    if (txt) {
+      const entry = { byId: State.me.id, by: State.me.name, text: txt, at: new Date().toISOString() };
+      if (i >= 0) arr[i] = entry; else arr.push(entry);
+    } else if (i >= 0) arr.splice(i, 1);
+    data.managerComments[FormCtx.quarter] = arr;
   }
   return data;
 }
@@ -839,6 +868,8 @@ function wireForm() {
   if (saveDraft) saveDraft.onclick = () => saveForm('Draft saved');
   const saveMgr = document.getElementById('saveMgr');
   if (saveMgr) saveMgr.onclick = () => saveForm('Saved as manager edit');
+  const saveMgrComment = document.getElementById('saveMgrComment');
+  if (saveMgrComment) saveMgrComment.onclick = () => saveForm('Comment saved');
 
   const submitBtn = document.getElementById('submitBtn');
   if (submitBtn) submitBtn.onclick = async () => {

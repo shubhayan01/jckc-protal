@@ -332,7 +332,7 @@ app.post('/api/form/:id/save', requireAuth, (req, res) => {
   // Owners can only edit while HR has the filing window open (managers/HR exempt).
   if (isOwner && !isAncestor && !formWindowOpen(f.type, f.fy, f.user_id))
     return res.status(403).json({ error: `The ${f.type.toUpperCase()} window is closed by HR — you can't edit right now.` });
-  const data = req.body.data || {};
+  const data = normMgrComments(req.body.data || {});
   db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=?, updated_at=datetime(\'now\') WHERE id=?')
     .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
   if (isAncestor && !isOwner) db.prepare('INSERT INTO approvals (form_id,actor_id,action,comment) VALUES (?,?,?,?)').run(f.id, req.user.id, 'edit', 'Manager edited the form');
@@ -359,6 +359,28 @@ app.post('/api/form/:id/submit', requireAuth, (req, res) => {
   res.json({ form: formView(db.prepare('SELECT * FROM forms WHERE id=?').get(f.id), req.user) });
 });
 
+// Manager comments are kept as ONE entry per manager per quarter (a list), so a later
+// approver (e.g. the CEO) never overwrites the reporting manager's comment. Legacy
+// single-object comments are migrated to a one-item list on the fly.
+function normMgrComments(data) {
+  data.managerComments = data.managerComments || {};
+  for (const q of Object.keys(data.managerComments)) {
+    const v = data.managerComments[q];
+    if (v && !Array.isArray(v)) data.managerComments[q] = v.text ? [v] : [];
+  }
+  return data;
+}
+function upsertMgrComment(data, quarter, actor, text) {
+  normMgrComments(data);
+  const arr = data.managerComments[quarter] = data.managerComments[quarter] || [];
+  const i = arr.findIndex(c => c.byId === actor.id);
+  const txt = String(text || '').trim();
+  if (!txt) { if (i >= 0) arr.splice(i, 1); return data; }
+  const entry = { byId: actor.id, by: actor.name, text: txt, at: new Date().toISOString() };
+  if (i >= 0) arr[i] = entry; else arr.push(entry);
+  return data;
+}
+
 // Approve — advances to next approver, or marks fully approved at the end.
 app.post('/api/form/:id/approve', requireAuth, (req, res) => {
   const f = db.prepare('SELECT * FROM forms WHERE id=?').get(Number(req.params.id));
@@ -373,8 +395,7 @@ app.post('/api/form/:id/approve', requireAuth, (req, res) => {
   let dataChanged = false;
   if (req.body.data && isAncestor) { data = req.body.data; dataChanged = true; }
   if (req.body.managerComment) {
-    data.managerComments = data.managerComments || {};
-    data.managerComments[f.quarter] = { by: req.user.name, text: req.body.managerComment, at: new Date().toISOString() };
+    upsertMgrComment(data, f.quarter, req.user, req.body.managerComment);
     dataChanged = true;
   }
   if (dataChanged) {
@@ -404,8 +425,9 @@ app.post('/api/form/:id/sendback', requireAuth, (req, res) => {
   // Persist the manager's in-form edits (field changes + row comments) before returning
   // the form, so the associate sees exactly what the manager changed.
   if (req.body.data && ancestorIds(f.user_id).has(req.user.id)) {
+    const data = normMgrComments(req.body.data);
     db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?')
-      .run(JSON.stringify(req.body.data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
+      .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
   }
   db.prepare("UPDATE forms SET status='sent_back', stage_index=-1, locked=0, updated_at=datetime('now') WHERE id=?").run(f.id);
   db.prepare('INSERT INTO approvals (form_id,actor_id,action,stage,comment) VALUES (?,?,?,?,?)').run(f.id, req.user.id, 'send_back', null, comment);
