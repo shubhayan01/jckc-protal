@@ -21,6 +21,19 @@ First `npm start` creates `portal.db` (SQLite) and seeds all 55 employees from
 
 Requires Node 22.5+ (uses the built-in `node:sqlite` — no native build/compiler needed).
 
+## Access tiers
+
+Three login tiers drive what each person sees:
+
+- **Super Admin** — Payel & Amlan (CEO/Director): full control, including the HR Admin
+  Console, form windows, and final approval on every form.
+- **HR** — Gouri & Rushika: HR Desk, suggestion inbox, form windows, assets.
+- **Associate** — everyone else. Anyone with direct reports also gets a **Team** tab
+  under Performance.
+
+Every screen has a **How to use** button (the "?" in the top bar) that launches a guided
+tour tailored to the signed-in tier.
+
 ## Logins
 
 | Who | Email | Password |

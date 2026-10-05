@@ -50,6 +50,7 @@ const ICONS = {
   smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>',
   box: '<path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
   trash: '<path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7M12 17h.01"/>',
 };
 function icon(name, cls) { return `<svg class="icon ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`; }
 
@@ -81,6 +82,17 @@ function roleLabel(r) { return ({ ceo: 'CEO', director: 'Director', hr_admin: 'H
 // Whoever manages a team or sits in leadership/HR can open the Team Performance view.
 function canSeeTeam(me) { return !!me && (me.is_manager || ['manager', 'director', 'ceo', 'hr', 'hr_admin'].includes(me.role)); }
 function canManageAssets(me) { return !!me && ['hr', 'hr_admin', 'director', 'ceo'].includes(me.role); }
+
+// Three login tiers: Super Admin (Payel, Amlan) · HR (Gouri, Rushika) · Associate (everyone else).
+function accessLevel(me) {
+  if (!me) return 'associate';
+  if (['ceo', 'director'].includes(me.role)) return 'super_admin';
+  if (['hr', 'hr_admin'].includes(me.role)) return 'hr';
+  return 'associate';
+}
+function accessLabel(me) { return ({ super_admin: 'Super Admin', hr: 'HR', associate: 'Associate' })[accessLevel(me)]; }
+function isSuperAdmin(me) { return accessLevel(me) === 'super_admin'; }
+function isAdminLevel(me) { return accessLevel(me) !== 'associate'; }
 
 // ------------------------------------------------- toast + modal
 function toast(msg, kind) {
@@ -123,8 +135,8 @@ const NAV = [
     { t: 'Automation', r: '#/page/sop-automation', i: 'settings' },
   ] },
   { label: 'Performance', icon: 'chart', items: [
-    { t: 'KPI Incentive Plan', r: '#/kpi', i: 'chart' },
-    { t: 'Appraisal', r: '#/appraisal', i: 'target' },
+    { t: 'KPI Incentive Plan', r: '#/performance/kpi', i: 'chart' },
+    { t: 'Appraisal', r: '#/performance/appraisal', i: 'target' },
   ] },
   { label: 'Asset Tracking Tool', icon: 'box', show: canManageAssets, items: [
     { t: 'Asset Register', r: '#/assets', i: 'box' },
@@ -151,9 +163,9 @@ function renderShell(content) {
     </div>`).join('')
     + NAV_LINKS.map(l => `<div class="nav-item"><a class="nav-link" href="${l.r}">${icon(l.icon, 'icon-sm')}${l.label}</a></div>`).join('');
 
-  const hrLinks = (me.role === 'hr' || me.role === 'hr_admin')
+  const hrLinks = isAdminLevel(me)
     ? `<a href="#/hr/suggestions">${icon('bulb')}Suggestion Inbox</a><a href="#/hr/windows">${icon('toggle')}Form Windows</a>` : '';
-  const adminLink = me.role === 'hr_admin'
+  const adminLink = (me.role === 'hr_admin' || isSuperAdmin(me))
     ? `<a href="#/admin">${icon('settings')}HR Admin Console</a>` : '';
 
   app().innerHTML = `
@@ -173,13 +185,16 @@ function renderShell(content) {
         <div class="user-dd" id="notifDD" style="min-width:320px;max-height:420px;overflow:auto"></div>
       </div>
       <a href="#/suggestions" class="icon-btn" title="Suggestion box">${icon('bulb')}</a>
+      <button class="icon-btn" id="howToBtn" title="How to use this portal">${icon('help')}</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme">${icon(State.theme === 'dark' ? 'sun' : 'moon')}</button>
       <div class="user-menu" id="userMenu">
         <button class="user-btn" id="userBtn">
           ${avatarHTML(me, 34)}
-          <span><span class="nm">${esc(me.name)}</span><br><span class="rl">${roleLabel(me.role)}</span></span>
+          <span><span class="nm">${esc(me.name)}</span><br><span class="rl">${esc(accessLabel(me))} · ${esc(roleLabel(me.role))}</span></span>
         </button>
         <div class="user-dd">
+          <div class="dd-tier">${icon('shield', 'icon-sm')} Signed in as <strong>${esc(accessLabel(me))}</strong></div>
+          <button id="howToMenu">${icon('help')}How to use (guided tour)</button>
           <a href="#/dashboard">${icon('home')}Dashboard</a>
           <a href="#/profile">${icon('user')}My Profile</a>
           <a href="#/directory">${icon('users')}Team Directory</a>
@@ -194,6 +209,8 @@ function renderShell(content) {
 
   // wiring
   document.getElementById('themeBtn').onclick = toggleTheme;
+  const howTo = document.getElementById('howToBtn'); if (howTo) howTo.onclick = () => startGuide();
+  const howToMenu = document.getElementById('howToMenu'); if (howToMenu) howToMenu.onclick = () => startGuide();
   document.getElementById('logoutBtn').onclick = async () => { await api('/logout', { method: 'POST' }); State.me = null; location.hash = '#/login'; };
   const uMenu = document.getElementById('userMenu');
   document.getElementById('userBtn').onclick = e => { e.stopPropagation(); nMenu.classList.remove('open'); uMenu.classList.toggle('open'); };
@@ -665,7 +682,7 @@ function paintForm() {
       <div style="text-align:right">
         ${statusBadge(f.status)}
         <div class="muted" style="margin-top:6px">Submitted ${f.submit_count} time${f.submit_count === 1 ? '' : 's'}</div>
-        ${isKPI && canSeeTeam(me) ? `<div style="margin-top:10px"><a class="btn btn-sm" href="#/team">${icon('users', 'icon-sm')}Team Performance</a></div>` : ''}
+        ${isKPI && canSeeTeam(me) ? `<div style="margin-top:10px"><a class="btn btn-sm" href="#/performance/kpi?tab=team">${icon('users', 'icon-sm')}Team Performance</a></div>` : ''}
       </div>
     </div>
 
@@ -1308,26 +1325,116 @@ async function renderInbox() {
   </div>`);
   bindFormRows();
 }
-async function renderTeam() {
+// Back-compat: old #/team link now lands on the KPI Team tab.
+function renderTeam() { location.hash = '#/performance/kpi?tab=team'; }
+
+const FY = 'FY2026-27';
+const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
+
+// Performance hub: Performance → KPI / Appraisal, each with Self (+ Team if you manage people).
+async function renderPerformance(type, params) {
+  type = type === 'appraisal' ? 'appraisal' : 'kpi';
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
-  // Pull both KPI and Appraisal forms so submitted self-appraisals surface here too.
-  const [kpiRes, aprRes] = await Promise.all([
-    api('/forms?type=kpi&fy=FY2026-27').catch(() => ({ forms: [] })),
-    api('/forms?type=appraisal&fy=FY2026-27').catch(() => ({ forms: [] })),
-  ]);
-  const team = [...kpiRes.forms, ...aprRes.forms]
-    .filter(f => f.owner.id !== State.me.id)
-    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-  const awaiting = team.filter(f => f.status === 'in_review' && f.rights && f.rights.canApprove);
-  setView(`<div class="page"><div class="page-head"><div><div class="crumb">Performance · Team</div><h1>Team performance</h1>
-    <p>KPI &amp; Appraisal forms across your reporting tree · FY2026-27</p></div></div>
-    ${awaiting.length ? `<div class="sec-head"><h2>${icon('inbox', 'section-icon')}Awaiting your approval</h2>
-      <span class="badge b-review"><span class="dot"></span>${awaiting.length} pending</span></div>
-      ${tableOfForms(awaiting, true)}` : ''}
-    ${team.length ? `<div class="sec-head"><h2>${icon('users', 'section-icon')}All team forms</h2><span class="sec-line"></span></div>${tableOfForms(team, false)}`
-      : `<div class="card"><div class="empty">${icon('users')}No team forms yet.</div></div>`}
+  const me = State.me;
+  let forms = [], win = {};
+  try {
+    ({ forms } = await api('/forms?type=' + type + '&fy=' + FY));
+    win = await api('/my-windows?fy=' + FY).catch(() => ({}));
+  } catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
+
+  const mine = forms.filter(f => f.owner.id === me.id);
+  const team = forms.filter(f => f.owner.id !== me.id).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  const showTeam = me.is_manager || team.length > 0;
+  const windowOpen = type === 'appraisal' ? !!win.appraisal : !!win.kpi;
+
+  // which tab
+  let tab = params && params.tab === 'team' ? 'team' : 'self';
+  if (tab === 'team' && !showTeam) tab = 'self';
+
+  const typeLabel = type === 'kpi' ? 'KPI Incentive Plan' : 'Appraisal';
+  const tabs = `<div class="seg" id="perfTabs">
+      <a class="seg-btn ${tab === 'self' ? 'active' : ''}" href="#/performance/${type}?tab=self">${icon('user', 'icon-sm')}Self</a>
+      ${showTeam ? `<a class="seg-btn ${tab === 'team' ? 'active' : ''}" href="#/performance/${type}?tab=team">${icon('users', 'icon-sm')}Team</a>` : ''}
+    </div>`;
+  const typeSwitch = `<div class="seg seg-soft">
+      <a class="seg-btn ${type === 'kpi' ? 'active' : ''}" href="#/performance/kpi?tab=${tab}">${icon('chart', 'icon-sm')}KPI</a>
+      <a class="seg-btn ${type === 'appraisal' ? 'active' : ''}" href="#/performance/appraisal?tab=${tab}">${icon('target', 'icon-sm')}Appraisal</a>
+    </div>`;
+
+  const body = tab === 'team'
+    ? perfTeamView(team)
+    : perfSelfView(type, mine, windowOpen);
+
+  setView(`<div class="page">
+    <div class="page-head">
+      <div><div class="crumb">Performance</div><h1>${typeLabel}</h1>
+        <p>${type === 'kpi' ? 'Your quarterly performance-based incentive plan.' : 'Your annual appraisal.'} · ${FY}</p></div>
+      ${typeSwitch}
+    </div>
+    ${tabs}
+    ${body}
   </div>`);
   bindFormRows();
+}
+
+// --- Self view: quarter cards (KPI) or a single annual card (appraisal) ---
+function perfSelfView(type, mine, windowOpen) {
+  const byQ = {}; mine.forEach(f => { byQ[f.quarter] = f; });
+  const closedNote = `<div class="locked-banner" style="background:var(--danger-soft);color:var(--danger)">${icon('lock')} The ${type === 'kpi' ? 'KPI' : 'Appraisal'} filing window is currently <strong>closed by HR</strong>. You can view your form${type === 'kpi' ? 's' : ''} but can't start or edit one until HR opens it.</div>`;
+  const openNote = `<div class="locked-banner approved-banner">${icon('unlock')} The filing window is <strong>open</strong> — you can start or edit your ${type === 'kpi' ? 'quarter' : 'appraisal'} form${type === 'kpi' ? 's' : ''} now.</div>`;
+
+  if (type === 'appraisal') {
+    const f = byQ.Q1 || mine[0] || null;
+    return `<div style="margin-bottom:16px">${windowOpen ? openNote : closedNote}</div>
+      <div class="asset-grid">${perfCard(type, 'Q1', f, windowOpen, 'Annual appraisal')}</div>`;
+  }
+  const cards = QUARTERS.map(q => perfCard(type, q, byQ[q], windowOpen, q)).join('');
+  return `<div style="margin-bottom:16px">${windowOpen ? openNote : closedNote}</div>
+    <div class="asset-grid">${cards}</div>`;
+}
+
+// A single form card with status + the right action (view / edit / start), window-gated.
+function perfCard(type, quarter, f, windowOpen, label) {
+  const status = f ? f.status : 'none';
+  const route = `#/${type}?quarter=${quarter}&user_id=${State.me.id}`;
+  let action, note = '';
+  if (!f || status === 'none') {
+    action = windowOpen
+      ? `<a class="btn btn-primary btn-sm" href="${route}">${icon('plus', 'icon-sm')}Start form</a>`
+      : `<button class="btn btn-sm" disabled>${icon('lock', 'icon-sm')}Start form</button>`;
+    note = windowOpen ? 'Not started yet.' : 'Opens when HR opens the window.';
+  } else if (status === 'approved') {
+    action = `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
+    note = 'Approved &amp; locked. ' + (windowOpen && type === 'kpi' ? 'Start another quarter below.' : 'Completed for ' + FY + '.');
+  } else if (status === 'in_review') {
+    action = `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
+    note = esc(f.stage_label || 'In review — locked.');
+  } else { // draft or sent_back
+    action = windowOpen
+      ? `<a class="btn btn-primary btn-sm" href="#/form/${f.id}">${icon('edit', 'icon-sm')}${status === 'sent_back' ? 'Revise &amp; resubmit' : 'Open &amp; edit'}</a>`
+      : `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
+    note = status === 'sent_back' ? 'Sent back for revision.' : 'Draft in progress.';
+  }
+  return `<div class="card card-pad perf-card">
+    <div class="perf-card-top">
+      <div><div class="perf-q">${esc(type === 'appraisal' ? 'Appraisal' : label)}</div>
+        <div class="muted">${type === 'kpi' ? 'Quarter ' + quarter : 'Financial year ' + FY}</div></div>
+      ${f ? statusBadge(status) : `<span class="badge b-draft"><span class="dot"></span>Not started</span>`}
+    </div>
+    <div class="perf-card-foot">
+      <span class="muted">${note}</span>
+      ${action}
+    </div>
+  </div>`;
+}
+
+function perfTeamView(team) {
+  if (!team.length) return `<div class="card"><div class="empty">${icon('users')}No team forms yet. When your reports submit, they'll appear here.</div></div>`;
+  const awaiting = team.filter(f => f.status === 'in_review' && f.rights && f.rights.canApprove);
+  return `${awaiting.length ? `<div class="sec-head"><h2>${icon('inbox', 'section-icon')}Awaiting your approval</h2>
+      <span class="badge b-review"><span class="dot"></span>${awaiting.length} pending</span></div>${tableOfForms(awaiting, true)}` : ''}
+    <div class="sec-head"><h2>${icon('users', 'section-icon')}All team forms</h2><span class="sec-line"></span></div>
+    ${tableOfForms(team, false)}`;
 }
 function tableOfForms(forms, showAction) {
   return `<div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
@@ -1968,6 +2075,73 @@ async function renderAssetAudit() {
 }
 
 // =====================================================================
+//  HOW TO USE — guided tour (tailored to the signed-in access level)
+// =====================================================================
+function guideSteps(me) {
+  const level = accessLevel(me);
+  const common = [
+    { icon: 'home', title: 'Welcome to the Justwords Portal', body: `Hi ${esc(me.name.split(' ')[0])}! This quick tour shows what you can do here as <strong>${esc(accessLabel(me))}</strong>. Use the ← → buttons to move through it, or Skip any time.` },
+    { icon: 'bell', title: 'Dashboard & announcements', body: 'Your home screen shows company news, the Training Centre, quick links and — for approvers — anything awaiting your action.' },
+    { icon: 'grid', title: 'Tools, About & HR Desk', body: 'The top navigation groups everything: Tools & Access, About Us, the HR Desk (handbook, policies, leave, vacancies) and SOP documents.' },
+    { icon: 'chat', title: 'Messages & directory', body: 'Use Messages for internal chat, and the Team Directory to find any colleague and start a direct message.' },
+  ];
+  const perfSelf = { icon: 'chart', title: 'Performance → KPI & Appraisal', body: 'Open <strong>Performance</strong> and pick KPI or Appraisal. The <strong>Self</strong> tab holds your own forms. Fill a quarter, submit, and track it up the approval chain. A form only opens for editing while HR has the filing window open.' };
+  const perfTeam = { icon: 'users', title: 'Performance → Team tab', body: 'Because people report to you, each Performance page also has a <strong>Team</strong> tab: review, comment on, approve or send back your team\'s KPI and appraisal forms. Your edits and comments are saved and shown to them.' };
+  const newForm = { icon: 'plus', title: 'Starting another form', body: 'Once a form is approved it locks. When HR opens the next window, a <strong>Start form</strong> button appears on the Self tab so you can begin the next quarter.' };
+  const assets = { icon: 'box', title: 'Asset Tracking Tool', body: 'Under <strong>Asset Tracking Tool</strong>: keep the Asset Register (category, specs, JW asset no., owner, issued-to, rent/acquisition, audit date) and record dated checks on the Asset Audit page.' };
+  const windows = { icon: 'toggle', title: 'Form windows (open/close)', body: 'From your profile menu → <strong>Form Windows</strong>, open or close KPI and Appraisal filing for everyone, or per person. Nobody can start or edit a form while its window is closed.' };
+  const inbox = { icon: 'bulb', title: 'Suggestion inbox', body: 'The Suggestion Inbox collects feedback from associates (anonymous or named) for you to review and resolve.' };
+  const console_ = { icon: 'settings', title: 'HR Admin Console', body: 'The HR Admin Console gives usage stats, content-page editing and a full org-wide view of every KPI and appraisal.' };
+
+  if (level === 'associate') {
+    const steps = [...common, perfSelf];
+    if (me.is_manager) steps.push(perfTeam);
+    steps.push(newForm);
+    return steps;
+  }
+  if (level === 'hr') {
+    return [...common, perfSelf, perfTeam, newForm, windows, inbox, assets, console_];
+  }
+  // super_admin
+  return [
+    ...common, perfSelf, perfTeam, newForm, windows, inbox, assets, console_,
+    { icon: 'shield', title: 'You are a Super Admin', body: 'As Super Admin (Payel & Amlan) you have full control: everything HR can do, plus the HR Admin Console and the final approval on every form.' },
+  ];
+}
+
+let GuideIdx = 0;
+function startGuide() {
+  GuideIdx = 0;
+  renderGuide();
+}
+function renderGuide() {
+  const steps = guideSteps(State.me);
+  const i = Math.max(0, Math.min(GuideIdx, steps.length - 1));
+  const s = steps[i];
+  const dots = steps.map((_, k) => `<span class="g-dot ${k === i ? 'on' : ''}"></span>`).join('');
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-bg" data-close><div class="modal guide-modal">
+    <div class="guide-body">
+      <div class="guide-icon">${icon(s.icon)}</div>
+      <div class="guide-step">Step ${i + 1} of ${steps.length}</div>
+      <h3>${s.title}</h3>
+      <p>${s.body}</p>
+      <div class="guide-dots">${dots}</div>
+    </div>
+    <div class="modal-foot guide-foot">
+      <button class="btn btn-ghost" data-close>Skip</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="gPrev" ${i === 0 ? 'disabled' : ''}>${icon('arrow', 'icon-sm')}Back</button>
+        <button class="btn btn-primary" id="gNext">${i === steps.length - 1 ? icon('check', 'icon-sm') + 'Done' : 'Next' + icon('arrow', 'icon-sm')}</button>
+      </div>
+    </div>
+  </div></div>`;
+  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeModal(); }));
+  document.getElementById('gPrev').onclick = () => { GuideIdx = i - 1; renderGuide(); };
+  document.getElementById('gNext').onclick = () => { if (i === steps.length - 1) closeModal(); else { GuideIdx = i + 1; renderGuide(); } };
+}
+
+// =====================================================================
 //  ROUTER
 // =====================================================================
 function parseHash() {
@@ -1992,6 +2166,9 @@ async function route() {
     if (path === '/login') { if (State.me) { location.hash = '#/dashboard'; return; } renderLogin(); return; }
     if (path === '/password') return renderPassword();
     if (path === '/dashboard' || path === '/') return renderDashboard();
+    if (path === '/performance/kpi') return renderPerformance('kpi', params);
+    if (path === '/performance/appraisal') return renderPerformance('appraisal', params);
+    if (path === '/performance') return renderPerformance('kpi', params);
     if (path === '/kpi') return renderForm('kpi', params);
     if (path === '/appraisal') return renderForm('appraisal', params);
     if (path.startsWith('/form/')) return loadFormById(path.split('/')[2]);

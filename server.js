@@ -70,8 +70,16 @@ function requireRole(...roles) {
   };
 }
 const isHR = (u) => u.role === 'hr' || u.role === 'hr_admin';
+// Super admins (CEO + Director, e.g. Payel & Amlan) have full control — they can do
+// everything HR can, plus the HR-Admin console. Admin-level = HR roles + super admins.
+const isSuperAdmin = (u) => u.role === 'ceo' || u.role === 'director';
+const isAdminLevel = (u) => isHR(u) || isSuperAdmin(u);
 function requireHR(req, res, next) {
-  if (!isHR(req.user)) return res.status(403).json({ error: 'HR only' });
+  if (!isAdminLevel(req.user)) return res.status(403).json({ error: 'HR only' });
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (!isAdminLevel(req.user)) return res.status(403).json({ error: 'Forbidden' });
   next();
 }
 
@@ -199,6 +207,16 @@ app.post('/api/login', (req, res) => {
 });
 app.post('/api/logout', (req, res) => req.session.destroy(() => res.json({ ok: true })));
 app.get('/api/me', requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
+
+// Whether the current user's own KPI / Appraisal filing windows are open right now.
+app.get('/api/my-windows', requireAuth, (req, res) => {
+  const fy = req.query.fy || 'FY2026-27';
+  res.json({
+    fy,
+    kpi: formWindowOpen('kpi', fy, req.user.id),
+    appraisal: formWindowOpen('appraisal', fy, req.user.id),
+  });
+});
 
 app.post('/api/change-password', requireAuth, (req, res) => {
   const { current, next } = req.body || {};
@@ -507,13 +525,13 @@ app.post('/api/notifications/read', requireAuth, (req, res) => {
 });
 
 // ---------------------------------------------------------------- page attachments
-app.post('/api/pages/:slug/files', requireAuth, requireRole('hr_admin'), upload.single('file'), (req, res) => {
+app.post('/api/pages/:slug/files', requireAuth, requireAdmin, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
   db.prepare('INSERT INTO page_files (slug,filename,original,uploaded_by) VALUES (?,?,?,?)')
     .run(req.params.slug, req.file.filename, req.file.originalname, req.user.id);
   res.json({ ok: true, url: '/uploads/' + req.file.filename, original: req.file.originalname });
 });
-app.delete('/api/pages/:slug/files/:id', requireAuth, requireRole('hr_admin'), (req, res) => {
+app.delete('/api/pages/:slug/files/:id', requireAuth, requireAdmin, (req, res) => {
   db.prepare('DELETE FROM page_files WHERE id=? AND slug=?').run(Number(req.params.id), req.params.slug);
   res.json({ ok: true });
 });
@@ -529,7 +547,7 @@ app.get('/api/pages/:slug', requireAuth, (req, res) => {
   p.files = db.prepare('SELECT id,filename,original,created_at FROM page_files WHERE slug=? ORDER BY created_at DESC').all(req.params.slug);
   res.json({ page: p });
 });
-app.put('/api/pages/:slug', requireAuth, requireRole('hr_admin'), (req, res) => {
+app.put('/api/pages/:slug', requireAuth, requireAdmin, (req, res) => {
   const { title, body } = req.body || {};
   db.prepare("UPDATE pages SET title=?, body=?, updated_by=?, updated_at=datetime('now') WHERE slug=?")
     .run(title, body, req.user.id, req.params.slug);
@@ -548,12 +566,12 @@ app.post('/api/suggestions', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/suggestions', requireAuth, (req, res) => {
-  if (!isHR(req.user)) return res.status(403).json({ error: 'HR only' });
+  if (!isAdminLevel(req.user)) return res.status(403).json({ error: 'HR only' });
   const rows = db.prepare(`SELECT s.*, u.name author FROM suggestions s LEFT JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC`).all()
     .map(r => ({ ...r, author: r.anonymous ? 'Anonymous' : r.author }));
   res.json({ suggestions: rows });
 });
-app.post('/api/suggestions/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/suggestions/:id', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   db.prepare('UPDATE suggestions SET status=?, hr_note=? WHERE id=?').run(req.body.status || 'reviewing', req.body.hr_note || '', Number(req.params.id));
   res.json({ ok: true });
 });
@@ -592,13 +610,13 @@ app.post('/api/leave/:id', requireAuth, (req, res) => {
 app.get('/api/vacancies', requireAuth, (req, res) => {
   res.json({ vacancies: db.prepare('SELECT * FROM vacancies ORDER BY created_at DESC').all() });
 });
-app.post('/api/vacancies', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/vacancies', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   const { title, department, location, type, description } = req.body || {};
   db.prepare('INSERT INTO vacancies (title,department,location,type,description,posted_by) VALUES (?,?,?,?,?,?)')
     .run(title, department, location, type, description, req.user.id);
   res.json({ ok: true });
 });
-app.post('/api/vacancies/:id/close', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/vacancies/:id/close', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   db.prepare("UPDATE vacancies SET status='closed' WHERE id=?").run(Number(req.params.id));
   res.json({ ok: true });
 });
@@ -611,14 +629,14 @@ app.get('/api/announcements', requireAuth, (req, res) => {
     ORDER BY a.pinned DESC, a.created_at DESC`).all();
   res.json({ announcements: rows });
 });
-app.post('/api/announcements', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/announcements', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   const { category, title, body, pinned } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Title is required' });
   db.prepare('INSERT INTO announcements (category,title,body,pinned,posted_by) VALUES (?,?,?,?,?)')
     .run(category || 'Announcement', String(title).trim(), body || '', pinned ? 1 : 0, req.user.id);
   res.json({ ok: true });
 });
-app.delete('/api/announcements/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.delete('/api/announcements/:id', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   db.prepare('DELETE FROM announcements WHERE id=?').run(Number(req.params.id));
   res.json({ ok: true });
 });
@@ -687,7 +705,7 @@ app.post('/api/asset-audits', requireAuth, requireRole('hr', 'hr_admin', 'direct
 });
 
 // ---------------------------------------------------------------- HR admin usage/stats
-app.get('/api/admin/stats', requireAuth, requireRole('hr_admin'), (req, res) => {
+app.get('/api/admin/stats', requireAuth, requireAdmin, (req, res) => {
   const totals = {
     employees: db.prepare('SELECT COUNT(*) c FROM users WHERE active=1').get().c,
     managers: db.prepare('SELECT COUNT(*) c FROM users WHERE is_manager=1').get().c,
