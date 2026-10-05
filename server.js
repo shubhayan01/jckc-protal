@@ -642,7 +642,7 @@ app.get('/api/assets', requireAuth, requireAssetView, (req, res) => {
   const assets = db.prepare('SELECT * FROM assets ORDER BY updated_at DESC, id DESC').all();
   res.json({ assets });
 });
-app.post('/api/assets', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/assets', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const a = cleanAsset(req.body || {});
   if (!a.category && !a.jw_asset_no && !a.identity_no)
     return res.status(400).json({ error: 'Add at least a category or an asset number' });
@@ -651,7 +651,7 @@ app.post('/api/assets', requireAuth, requireRole('hr', 'hr_admin'), (req, res) =
     .run({ ...a, created_by: req.user.id });
   res.json({ ok: true, id: info.lastInsertRowid });
 });
-app.put('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.put('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const f = db.prepare('SELECT * FROM assets WHERE id=?').get(Number(req.params.id));
   if (!f) return res.status(404).json({ error: 'Asset not found' });
   const a = cleanAsset(req.body || {});
@@ -660,7 +660,7 @@ app.put('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res
     updated_at=datetime('now') WHERE id=@id`).run({ ...a, id: f.id });
   res.json({ ok: true });
 });
-app.delete('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.delete('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const id = Number(req.params.id);
   db.prepare('DELETE FROM asset_audits WHERE asset_id=?').run(id);
   db.prepare('DELETE FROM assets WHERE id=?').run(id);
@@ -674,7 +674,7 @@ app.get('/api/asset-audits', requireAuth, requireAssetView, (req, res) => {
     ORDER BY aa.created_at DESC`).all();
   res.json({ audits: rows });
 });
-app.post('/api/asset-audits', requireAuth, requireRole('hr', 'hr_admin'), (req, res) => {
+app.post('/api/asset-audits', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const assetId = Number(req.body.asset_id);
   const asset = db.prepare('SELECT * FROM assets WHERE id=?').get(assetId);
   if (!asset) return res.status(404).json({ error: 'Asset not found' });

@@ -1823,7 +1823,7 @@ async function renderFormWindows() {
 // =====================================================================
 //  ASSET TRACKING TOOL  (register + audit)
 // =====================================================================
-function canEditAssets(me) { return !!me && ['hr', 'hr_admin'].includes(me.role); }
+function canEditAssets(me) { return !!me && ['hr', 'hr_admin', 'director', 'ceo'].includes(me.role); }
 const OWN_LABEL = { rent: 'Rent', acquisition: 'Acquisition' };
 
 function assetFormBody(a = {}) {
