@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+  <rect width="1200" height="1600" fill="#F5C518"/>
+  <circle cx="980" cy="260" r="150" fill="#141414" opacity="0.14"/>
+  <circle cx="220" cy="1360" r="220" fill="#141414" opacity="0.10"/>
+  <rect x="120" y="740" width="90" height="10" rx="5" fill="#141414"/>
+  <text x="120" y="840" font-family="Georgia, serif" font-size="92" font-weight="700" fill="#141414">Justwords</text>
+  <text x="124" y="910" font-family="Georgia, serif" font-size="40" fill="#141414" opacity="0.8">Our culture</text>
+  <text x="124" y="1540" font-family="Arial, sans-serif" font-size="26" fill="#141414" opacity="0.5">Placeholder — replace public/img/login-3.svg with your photo</text>
+</svg>

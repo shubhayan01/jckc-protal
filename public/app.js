@@ -145,7 +145,7 @@ const NAV = [
     { t: 'Automation', r: '#/page/sop-automation', i: 'settings' },
   ] },
   { label: 'Performance', icon: 'chart', items: [
-    { t: 'KPI Incentive Plan', r: '#/performance/kpi', i: 'chart' },
+    { t: 'KPI Tracker', r: '#/performance/kpi', i: 'chart' },
     { t: 'Appraisal', r: '#/performance/appraisal', i: 'target' },
   ] },
   { label: 'Asset Tracking Tool', icon: 'box', show: canManageAssets, items: [
@@ -326,16 +326,25 @@ function statusBadge(status) {
 // =====================================================================
 //  LOGIN
 // =====================================================================
+// Login slideshow images. Swap these for your own photos — either drop files into
+// public/img/ keeping these names, or point these paths at your own files.
+const LOGIN_SLIDES = ['/img/login-1.svg', '/img/login-2.svg', '/img/login-3.svg'];
+
 function renderLogin() {
   app().innerHTML = `
   <div class="auth-wrap">
     <div class="auth-brand">
+      <div class="auth-slides" id="authSlides">
+        ${LOGIN_SLIDES.map((src, i) => `<div class="auth-slide ${i === 0 ? 'on' : ''}" style="background-image:url('${esc(src)}')"></div>`).join('')}
+        <div class="auth-scrim"></div>
+      </div>
       <div class="mark"><span class="logo" style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;">JW</span> Justwords</div>
       <div>
         <h1>Associates'<br>Portal</h1>
         <p>Together we create content-driven, transformational digital journeys for our customers — and a single home for KPIs, appraisals, policies and the people behind the work.</p>
       </div>
-      <div class="foot">Justwords Collaborative Knowledge Center · Internal use only</div>
+      <div class="foot">Justwords Collaborative Knowledge Center · Internal use only
+        ${LOGIN_SLIDES.length > 1 ? `<span class="auth-dots" id="authDots">${LOGIN_SLIDES.map((_, i) => `<span class="auth-dot ${i === 0 ? 'on' : ''}"></span>`).join('')}</span>` : ''}</div>
     </div>
     <div class="auth-panel">
       <div class="auth-card">
@@ -355,6 +364,7 @@ function renderLogin() {
     </div>
   </div>`;
   wirePwToggles();
+  startLoginSlides();
   document.getElementById('loginForm').onsubmit = async e => {
     e.preventDefault();
     const err = document.getElementById('loginErr'); err.textContent = '';
@@ -364,6 +374,21 @@ function renderLogin() {
       location.hash = user.must_reset ? '#/password' : '#/dashboard';
     } catch (ex) { err.textContent = ex.message; }
   };
+}
+
+let LOGIN_SLIDE_TIMER = null;
+function startLoginSlides() {
+  if (LOGIN_SLIDE_TIMER) clearInterval(LOGIN_SLIDE_TIMER);
+  if (LOGIN_SLIDES.length < 2) return;
+  let i = 0;
+  LOGIN_SLIDE_TIMER = setInterval(() => {
+    const slides = document.querySelectorAll('#authSlides .auth-slide');
+    const dots = document.querySelectorAll('#authDots .auth-dot');
+    if (!slides.length) { clearInterval(LOGIN_SLIDE_TIMER); LOGIN_SLIDE_TIMER = null; return; } // left the login page
+    slides[i].classList.remove('on'); if (dots[i]) dots[i].classList.remove('on');
+    i = (i + 1) % slides.length;
+    slides[i].classList.add('on'); if (dots[i]) dots[i].classList.add('on');
+  }, 5000);
 }
 
 // =====================================================================
@@ -701,8 +726,8 @@ function paintForm() {
 
   renderShell(`<div class="page">
     <div class="page-head">
-      <div><div class="crumb">Performance · ${isKPI ? 'KPI Incentive Plan' : 'Appraisal'}</div>
-        <h1>${isKPI ? 'Performance Based Incentive Plan' : 'Appraisal — Objectives'}</h1>
+      <div><div class="crumb">Performance · ${isKPI ? 'KPI Tracker' : 'Appraisal'}</div>
+        <h1>${isKPI ? 'KPI Tracker' : 'Appraisal — Objectives'}</h1>
         <p>${esc(owner.name)} · ${esc(owner.designation)} · ${esc(f.fy)}${f.rights.isOwner ? '' : ' · viewing as ' + roleLabel(me.role)}</p>
       </div>
       <div style="text-align:right">
@@ -807,8 +832,8 @@ function renderRows(rows, editable) {
       <td><input class="kpi-num" data-k="ytd" ${editable ? '' : 'readonly'} value="${esc(r.ytd || '')}"></td>
       <td><input class="kpi-num" data-k="${q}" ${editable ? '' : 'readonly'} value="${esc(r[q] || '')}"></td>
       <td><textarea rows="2" data-k="comments" ${editable ? '' : 'readonly'}>${esc(r.comments || '')}</textarea></td>
-      <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="muted" title="${esc(r.doc.name || 'file')}">${icon('file', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 14)}</a>` : `<span class="muted">—</span>`}
-        ${editable ? `<label class="muted" style="display:block;font-size:10px;margin-top:4px">${r.doc ? 'Replace' : 'Attach'} document<input type="file" data-file="${i}" style="font-size:10px;width:100px;margin-top:2px"></label>` : ''}</td>
+      <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="doc-attached" title="${esc(r.doc.name || 'file')}">${icon('check', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 16)}</a>` : `<span class="muted">—</span>`}
+        ${editable ? `<label class="btn btn-sm doc-attach-btn">${icon(r.doc ? 'edit' : 'plus', 'icon-sm')}${r.doc ? 'Replace' : 'Attach'}<input type="file" data-file="${i}" style="display:none"></label>` : ''}</td>
       ${editable ? `<td>${r.locked ? '' : `<button class="icon-btn btn-sm" data-del="${i}" title="Remove">${icon('x', 'icon-sm')}</button>`}</td>` : ''}
     </tr>`;
   });
@@ -917,10 +942,18 @@ function wireRowEvents() {
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
       const j = await res.json(); if (!res.ok) throw new Error(j.error);
+      const i = Number(inp.dataset.file);
       const data = collectData();
-      data.rows[Number(inp.dataset.file)].doc = { file: j.filename, name: j.original };
+      data.rows[i].doc = { file: j.filename, name: j.original };
       FormCtx.form.data = data;
-      toast('File attached — remember to save', 'ok');
+      // Re-render the whole table so the attached file shows immediately (previously it
+      // only appeared after a save + full reload, which looked like it wasn't attaching).
+      view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
+      wireRowEvents();
+      view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', () => {
+        const d = collectData(); const a = document.getElementById('autoScore'); if (a) a.textContent = computeAuto(d.rows);
+      }));
+      toast('File attached — remember to Save', 'ok');
     } catch (ex) { toast(ex.message, 'err'); }
   });
 }
@@ -1399,7 +1432,7 @@ async function renderPerformance(type, params) {
     teamCombined = teamKpi.concat(teamAppr).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
   }
 
-  const typeLabel = type === 'kpi' ? 'KPI Incentive Plan' : 'Appraisal';
+  const typeLabel = type === 'kpi' ? 'KPI Tracker' : 'Appraisal';
   const tabs = showTeam ? `<div class="seg" id="perfTabs">
       <a class="seg-btn ${tab === 'self' ? 'active' : ''}" href="#/performance/kpi?tab=self">${icon('user', 'icon-sm')}Self</a>
       <a class="seg-btn ${tab === 'team' ? 'active' : ''}" href="#/performance/kpi?tab=team">${icon('users', 'icon-sm')}Team performance</a>
@@ -1434,45 +1467,55 @@ function perfSelfView(type, mine, windowOpen) {
   if (type === 'appraisal') {
     const f = byQ.Q1 || mine[0] || null;
     return `<div style="margin-bottom:16px">${windowOpen ? openNote : closedNote}</div>
-      <div class="asset-grid">${perfCard(type, 'Q1', f, windowOpen, 'Annual appraisal')}</div>`;
+      <div class="perf-cards">${perfCard(type, 'Q1', f, windowOpen, 'Annual appraisal')}</div>`;
   }
   const cards = QUARTERS.map(q => perfCard(type, q, byQ[q], windowOpen, q)).join('');
   return `<div style="margin-bottom:16px">${windowOpen ? openNote : closedNote}</div>
-    <div class="asset-grid">${cards}</div>`;
+    <div class="perf-cards">${cards}</div>`;
 }
 
-// A single form card with status + the right action (view / edit / start), window-gated.
+// A single quarter card with a status accent, the right action, and the score once done.
+const PERF_STATE = {
+  none: { cls: 'ps-none', label: 'Not started', sub: 'No form for this quarter yet' },
+  draft: { cls: 'ps-draft', label: 'Draft', sub: 'In progress — not submitted' },
+  sent_back: { cls: 'ps-sentback', label: 'Sent back', sub: 'Needs revision & resubmission' },
+  in_review: { cls: 'ps-review', label: 'In review', sub: 'With your reporting line' },
+  approved: { cls: 'ps-approved', label: 'Approved', sub: 'Signed off & locked' },
+};
 function perfCard(type, quarter, f, windowOpen, label) {
   const status = f ? f.status : 'none';
+  const meta = PERF_STATE[status] || PERF_STATE.none;
   const route = `#/${type}?quarter=${quarter}&user_id=${State.me.id}`;
-  let action, note = '';
+  const isAppr = type === 'appraisal';
+  let action;
   if (!f || status === 'none') {
     action = windowOpen
-      ? `<a class="btn btn-primary btn-sm" href="${route}">${icon('plus', 'icon-sm')}Start form</a>`
-      : `<button class="btn btn-sm" disabled>${icon('lock', 'icon-sm')}Start form</button>`;
-    note = windowOpen ? 'Not started yet.' : 'Opens when HR opens the window.';
-  } else if (status === 'approved') {
+      ? `<a class="btn btn-primary btn-sm" href="${route}">${icon('plus', 'icon-sm')}Start</a>`
+      : `<button class="btn btn-sm" disabled>${icon('lock', 'icon-sm')}Locked</button>`;
+  } else if (status === 'approved' || status === 'in_review') {
     action = `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
-    note = 'Approved &amp; locked. ' + (windowOpen && type === 'kpi' ? 'Start another quarter below.' : 'Completed for ' + FY + '.');
-  } else if (status === 'in_review') {
-    action = `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
-    note = esc(f.stage_label || 'In review — locked.');
-  } else { // draft or sent_back
+  } else {
     action = windowOpen
-      ? `<a class="btn btn-primary btn-sm" href="#/form/${f.id}">${icon('edit', 'icon-sm')}${status === 'sent_back' ? 'Revise &amp; resubmit' : 'Open &amp; edit'}</a>`
+      ? `<a class="btn btn-primary btn-sm" href="#/form/${f.id}">${icon('edit', 'icon-sm')}${status === 'sent_back' ? 'Revise' : 'Open'}</a>`
       : `<a class="btn btn-sm" href="#/form/${f.id}">${icon('eye', 'icon-sm')}View</a>`;
-    note = status === 'sent_back' ? 'Sent back for revision.' : 'Draft in progress.';
   }
-  return `<div class="card card-pad perf-card">
-    <div class="perf-card-top">
-      <div><div class="perf-q">${esc(type === 'appraisal' ? 'Appraisal' : label)}</div>
-        <div class="muted">${type === 'kpi' ? 'Quarter ' + quarter : 'Financial year ' + FY}</div></div>
-      ${f ? statusBadge(status) : `<span class="badge b-draft"><span class="dot"></span>Not started</span>`}
+  const scoreVal = f && status === 'approved' && f.final_score != null ? f.final_score : null;
+  const qNum = quarter.replace(/\D/g, '');
+  const token = isAppr ? icon('target') : quarter;
+  const title = isAppr ? 'Annual appraisal' : 'Quarter ' + (qNum || quarter);
+  const sub = isAppr ? FY : quarter + ' · ' + FY;
+  return `<div class="perf-card ${meta.cls}" ${f ? `data-goto="#/form/${f.id}"` : ''}>
+    <div class="perf-accent"></div>
+    <div class="perf-card-main">
+      <div class="perf-token">${token}</div>
+      <div class="perf-info">
+        <div class="perf-q">${esc(title)}</div>
+        <div class="muted perf-sub">${esc(sub)}</div>
+        <div class="perf-status"><span class="status-dot"></span>${meta.label} · <span class="muted">${meta.sub}</span></div>
+      </div>
+      ${scoreVal != null ? `<div class="perf-score"><div class="ps-num">${esc(scoreVal)}</div><div class="ps-lbl muted">/100</div></div>` : ''}
     </div>
-    <div class="perf-card-foot">
-      <span class="muted">${note}</span>
-      ${action}
-    </div>
+    <div class="perf-card-foot">${action}</div>
   </div>`;
 }
 
@@ -1494,7 +1537,10 @@ function tableOfForms(forms, showAction) {
       ${showAction ? `<td><a class="btn btn-sm btn-primary" href="#/form/${f.id}">Review</a></td>` : ''}</tr>`).join('')}
   </tbody></table></div></div>`;
 }
-function bindFormRows() { view().querySelectorAll('[data-form]').forEach(r => r.onclick = e => { if (!e.target.closest('a')) location.hash = '#/form/' + r.dataset.form; }); }
+function bindFormRows() {
+  view().querySelectorAll('[data-form]').forEach(r => r.onclick = e => { if (!e.target.closest('a')) location.hash = '#/form/' + r.dataset.form; });
+  view().querySelectorAll('[data-goto]').forEach(r => r.onclick = e => { if (!e.target.closest('a,button')) location.hash = r.dataset.goto; });
+}
 
 async function renderDirectory() {
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
@@ -2157,7 +2203,7 @@ async function renderFormWindows() {
     const open = w.is_open;
     return `<div class="card card-pad wnd-card">
       <div class="wnd-top">
-        <div><div class="card-title">${icon(type === 'kpi' ? 'chart' : 'target', 'section-icon')}${type === 'kpi' ? 'KPI Incentive Plan' : 'Appraisal — Objectives'}</div>
+        <div><div class="card-title">${icon(type === 'kpi' ? 'chart' : 'target', 'section-icon')}${type === 'kpi' ? 'KPI Tracker' : 'Appraisal — Objectives'}</div>
           <div class="muted" style="margin-top:4px">${fy} · Company-wide filing window</div></div>
         <span class="badge ${open ? 'b-approved' : 'b-sentback'}"><span class="dot"></span>${open ? 'Open' : 'Closed'}</span>
       </div>
@@ -2202,7 +2248,7 @@ async function renderFormWindows() {
     const opts = users.map(u => `<option value="${u.id}">${esc(u.name)} — ${esc(u.designation || '')}</option>`).join('');
     modal('Add a per-person override', `
       <div class="field"><label>Associate</label><select id="ovUser">${opts}</select></div>
-      <div class="field"><label>Form</label><select id="ovType"><option value="kpi">KPI Incentive Plan</option><option value="appraisal">Appraisal</option></select></div>
+      <div class="field"><label>Form</label><select id="ovType"><option value="kpi">KPI Tracker</option><option value="appraisal">Appraisal</option></select></div>
       <div class="field"><label>State</label><select id="ovOpen"><option value="1">Open — allow this person to fill</option><option value="0">Closed — block this person</option></select></div>
       <p class="muted">This overrides the company-wide switch for the selected person only.</p>`,
       `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="ovSave">Save override</button>`);
@@ -2221,26 +2267,40 @@ async function renderFormWindows() {
 function canEditAssets(me) { return !!me && ['hr', 'hr_admin', 'director', 'ceo'].includes(me.role); }
 const OWN_LABEL = { rent: 'Rental', acquisition: 'Acquisition' };
 const ASSET_CATS = {
-  electronic: ['Laptop', 'Desktop', 'CPU', 'UPS', 'Mouse', 'Keyboard', 'Monitor', 'Hard Drive', 'SSD', 'Projector', 'TV', 'Wifi Router', 'Access Points - Leaseline', 'Biometric Machine', 'Telephones', 'Headphones', 'Camera'],
-  physical: ['Storage', 'Chairs', 'Fan', 'Boards', 'Table', 'Projector Screen', 'Keys', 'Phone Sims', 'Tripod'],
+  electronic: ['Laptop', 'Desktop', 'CPU', 'UPS', 'Mouse', 'Keyboard', 'Monitor', 'Hard Drive', 'SSD', 'Projector', 'TV', 'Wifi Router', 'Access Point - Leaseline', 'Biometric Machine', 'Telephone', 'Headphone', 'Camera'],
+  physical: ['Storage', 'Chair', 'Fan', 'Board', 'Table', 'Projector Screen', 'Key', 'Phone Sim', 'Tripod'],
 };
 
-// The asset modal is re-rendered on class / ownership change so the right fields show.
+// The asset modal is re-rendered on class / category / ownership change so the right
+// fields show. A laptop requires an uploaded agreement before it can be saved.
 function assetFormBody(a = {}) {
   const cls = a.asset_class === 'physical' ? 'physical' : 'electronic';
   const rent = a.ownership === 'rent';
+  const isLaptop = cls === 'electronic' && a.category === 'Laptop';
   const catOpts = `<option value="">Select…</option>` + ASSET_CATS[cls].map(c => `<option ${a.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')
     + (a.category && !ASSET_CATS[cls].includes(a.category) ? `<option selected>${esc(a.category)}</option>` : '');
-  const classSeg = `<div class="seg seg-soft" id="as_classSeg">
+  const classSeg = `<div class="seg seg-soft asset-type-seg" id="as_classSeg">
       <button type="button" class="seg-btn ${cls === 'electronic' ? 'active' : ''}" data-aclass="electronic">${icon('settings', 'icon-sm')}Electronic</button>
       <button type="button" class="seg-btn ${cls === 'physical' ? 'active' : ''}" data-aclass="physical">${icon('box', 'icon-sm')}Physical</button>
     </div>`;
+
+  const agreementField = isLaptop ? `
+      <div class="field" style="grid-column:1/-1"><label>Laptop Agreement <span style="color:var(--danger)">*</span> <span class="muted">(required for laptops)</span></label>
+        <input type="hidden" id="as_laptop_agreement" value="${esc(a.laptop_agreement || '')}">
+        <input type="hidden" id="as_laptop_agreement_name" value="${esc(a.laptop_agreement_name || '')}">
+        <div class="agreement-row">
+          ${a.laptop_agreement
+            ? `<a href="/uploads/${esc(a.laptop_agreement)}" target="_blank" class="agreement-file">${icon('file', 'icon-sm')}${esc(a.laptop_agreement_name || 'Agreement')}</a>`
+            : `<span class="muted">${icon('file', 'icon-sm')}No agreement attached yet</span>`}
+          <label class="btn btn-sm"><input type="file" id="as_agreementFile" style="display:none">${icon('plus', 'icon-sm')}${a.laptop_agreement ? 'Replace' : 'Attach'} agreement</label>
+        </div>
+      </div>`
+    : `<input type="hidden" id="as_laptop_agreement" value="${esc(a.laptop_agreement || '')}"><input type="hidden" id="as_laptop_agreement_name" value="${esc(a.laptop_agreement_name || '')}">`;
 
   const electronicFields = `
       <div class="field"><label>Brand</label><input id="as_brand" value="${esc(a.brand || '')}" placeholder="Dell, HP, Apple…"></div>
       <div class="field"><label>Configuration</label><input id="as_configuration" value="${esc(a.configuration || '')}" placeholder="i5 / 16GB / 512GB SSD"></div>
       <div class="field"><label>Service Tag no.</label><input id="as_service_tag" value="${esc(a.service_tag || '')}" placeholder="Serial / service tag"></div>
-      <div class="field"><label>Laptop Agreement</label><input id="as_laptop_agreement" value="${esc(a.laptop_agreement || '')}" placeholder="Signed / N/A"></div>
       <div class="field"><label>Issued to</label><input id="as_issued_to" value="${esc(a.issued_to || '')}" placeholder="Associate / team"></div>
       <div class="field"><label>Date of Issuance</label><input type="date" id="as_issued_on" value="${esc(a.issued_on || '')}"></div>
       <div class="field"><label>Rental / Acquisition</label><select id="as_ownership">
@@ -2249,7 +2309,8 @@ function assetFormBody(a = {}) {
       <div class="field" id="as_ownNumWrap">${rent
         ? `<label>Vendor's Name</label><input id="as_vendor_name" value="${esc(a.vendor_name || '')}" placeholder="Rental vendor">`
         : `<label>JW Asset No.</label><input id="as_jw_asset_no" value="${esc(a.jw_asset_no || '')}" placeholder="JW-0001">`}</div>
-      <div class="field"><label>Date of Return</label><input type="date" id="as_date_of_return" value="${esc(a.date_of_return || '')}"></div>
+      <div class="field"><label>Date of Return <span class="muted">(optional)</span></label><input type="date" id="as_date_of_return" value="${esc(a.date_of_return || '')}"></div>
+      ${agreementField}
       <div class="field" style="grid-column:1/-1"><label>Any comments</label><textarea id="as_notes" rows="2">${esc(a.notes || '')}</textarea></div>`;
 
   const physicalFields = `
@@ -2267,8 +2328,8 @@ function assetFormBody(a = {}) {
       ${cls === 'electronic' ? electronicFields : physicalFields}
     </div>`;
 }
-// Re-render the modal body in place when the class or ownership changes, preserving
-// whatever the user has typed so far.
+// Re-render the modal body in place when the class / category / ownership changes,
+// preserving whatever the user has typed so far.
 function wireAssetForm() {
   const reopen = (patch) => {
     const a = Object.assign(readAssetForm(), patch);
@@ -2279,18 +2340,31 @@ function wireAssetForm() {
   document.querySelectorAll('[data-aclass]').forEach(b => b.onclick = () => {
     const next = b.dataset.aclass;
     const cur = readAssetForm();
-    // dropping into the other class clears the category if it doesn't belong there
     if (!ASSET_CATS[next].includes(cur.category)) cur.category = '';
     reopen({ asset_class: next, category: cur.category });
   });
+  const cat = document.getElementById('as_category');
+  if (cat) cat.onchange = () => reopen({ category: cat.value });
   const own = document.getElementById('as_ownership');
   if (own) own.onchange = () => reopen({ ownership: own.value });
+  const ag = document.getElementById('as_agreementFile');
+  if (ag) ag.onchange = async () => {
+    const file = ag.files[0]; if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const j = await res.json(); if (!res.ok) throw new Error(j.error);
+      reopen({ laptop_agreement: j.filename, laptop_agreement_name: j.original });
+      toast('Agreement attached', 'ok');
+    } catch (ex) { toast(ex.message, 'err'); }
+  };
 }
 function readAssetForm() {
   const g = id => (document.getElementById(id) || {}).value || '';
   return {
     asset_class: g('as_asset_class'), category: g('as_category'), brand: g('as_brand'),
-    configuration: g('as_configuration'), service_tag: g('as_service_tag'), laptop_agreement: g('as_laptop_agreement'),
+    configuration: g('as_configuration'), service_tag: g('as_service_tag'),
+    laptop_agreement: g('as_laptop_agreement'), laptop_agreement_name: g('as_laptop_agreement_name'),
     ownership: g('as_ownership') || 'acquisition', vendor_name: g('as_vendor_name'), jw_asset_no: g('as_jw_asset_no'),
     issued_to: g('as_issued_to'), issued_on: g('as_issued_on'), date_of_return: g('as_date_of_return'), notes: g('as_notes'),
   };
@@ -2312,8 +2386,11 @@ async function renderAssets() {
   const ownCell = (a) => `<span class="pill-own ${a.ownership === 'rent' ? 'rent' : 'acq'}">${OWN_LABEL[a.ownership] || 'Acquisition'}</span>`;
   const idCell = (a) => a.ownership === 'rent' ? (a.vendor_name ? 'Vendor: ' + esc(a.vendor_name) : '—') : `<strong>${esc(a.jw_asset_no || '—')}</strong>`;
 
+  const agCell = (a) => a.laptop_agreement
+    ? `<a href="/uploads/${esc(a.laptop_agreement)}" target="_blank" title="${esc(a.laptop_agreement_name || 'Agreement')}">${icon('file', 'icon-sm')}</a>`
+    : (a.category === 'Laptop' ? '<span class="audit-due">Missing</span>' : '<span class="muted">—</span>');
   const elecTable = `<div class="tbl-wrap"><table class="tbl"><thead><tr>
-      <th>Category</th><th>Brand</th><th>Configuration</th><th>Service Tag</th><th>Issued to</th><th>Ownership</th><th>JW no. / Vendor</th><th>Return</th>${canEdit ? '<th></th>' : ''}
+      <th>Category</th><th>Brand</th><th>Configuration</th><th>Service Tag</th><th>Issued to</th><th>Ownership</th><th>JW no. / Vendor</th><th>Agreement</th><th>Return</th>${canEdit ? '<th></th>' : ''}
     </tr></thead><tbody>${electronic.length ? electronic.map(a => `<tr data-asset="${a.id}">
       <td><strong>${esc(a.category || '—')}</strong></td>
       <td>${esc(a.brand || '—')}</td>
@@ -2322,9 +2399,10 @@ async function renderAssets() {
       <td>${esc(a.issued_to || '—')}<div class="muted">${a.issued_on ? fmtDay(a.issued_on) : ''}</div></td>
       <td>${ownCell(a)}</td>
       <td class="asset-tag">${idCell(a)}</td>
+      <td>${agCell(a)}</td>
       <td class="muted">${a.date_of_return ? fmtDay(a.date_of_return) : '—'}</td>
       ${actionsCell(a)}
-    </tr>`).join('') : `<tr><td colspan="${canEdit ? 9 : 8}"><div class="empty">${icon('settings')}No electronic assets yet.</div></td></tr>`}</tbody></table></div>`;
+    </tr>`).join('') : `<tr><td colspan="${canEdit ? 10 : 9}"><div class="empty">${icon('settings')}No electronic assets yet.</div></td></tr>`}</tbody></table></div>`;
 
   const physTable = `<div class="tbl-wrap"><table class="tbl"><thead><tr>
       <th>Category</th><th>Brand / make</th><th>Specification</th><th>Issued to / location</th><th>Issued on</th><th>Comments</th>${canEdit ? '<th></th>' : ''}
@@ -2355,6 +2433,9 @@ async function renderAssets() {
         try {
           const body = readAssetForm();
           if (!body.category) { toast('Pick a category', 'err'); return; }
+          if (body.asset_class === 'electronic' && body.category === 'Laptop' && !body.laptop_agreement) {
+            toast('Attach the laptop agreement before saving', 'err'); return;
+          }
           if (a) await api('/assets/' + a.id, { method: 'PUT', body });
           else await api('/assets', { method: 'POST', body });
           closeModal(); toast('Asset saved', 'ok'); renderAssets();
@@ -2697,10 +2778,9 @@ function jwSpawnCat() {
 window.meow = jwSpawnCat;   // manual trigger for fun
 
 function jwScheduleCat() {
-  const next = 60000 + Math.random() * 90000;   // every ~1–2.5 min
+  const next = 600000 + Math.random() * 600000;   // every ~10–20 min (kept rare)
   setTimeout(() => { jwSpawnCat(); jwScheduleCat(); }, next);
 }
 window.addEventListener('load', () => {
-  setTimeout(jwSpawnCat, 6500);   // a friendly hello shortly after you arrive
-  jwScheduleCat();
+  jwScheduleCat();   // no immediate hello — the cat just drops by occasionally
 });

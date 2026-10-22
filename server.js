@@ -777,7 +777,7 @@ function requireAssetView(req, res, next) {
 // `asset_class` splits the register into Electronic vs Physical assets.
 const ASSET_FIELDS = [
   'asset_class', 'category', 'brand', 'configuration', 'specification', 'identity_no',
-  'service_tag', 'laptop_agreement', 'ownership', 'vendor_name', 'jw_asset_no',
+  'service_tag', 'laptop_agreement', 'laptop_agreement_name', 'ownership', 'vendor_name', 'jw_asset_no',
   'owned_by', 'issued_to', 'issued_on', 'date_of_return', 'audit_date', 'notes',
 ];
 function cleanAsset(body) {

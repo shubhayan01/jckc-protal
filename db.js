@@ -204,24 +204,6 @@ CREATE TABLE IF NOT EXISTS reimbursements (
 );
 `);
 
-// ---------------------------------------------------------------- asset / audit migrations
-// Assets gain a class (Electronic / Physical) and the richer electronic-asset fields.
-for (const col of [
-  "ALTER TABLE assets ADD COLUMN asset_class TEXT DEFAULT 'electronic'",
-  'ALTER TABLE assets ADD COLUMN brand TEXT',
-  'ALTER TABLE assets ADD COLUMN configuration TEXT',
-  'ALTER TABLE assets ADD COLUMN service_tag TEXT',
-  'ALTER TABLE assets ADD COLUMN laptop_agreement TEXT',
-  'ALTER TABLE assets ADD COLUMN vendor_name TEXT',
-  'ALTER TABLE assets ADD COLUMN date_of_return TEXT',
-]) { try { db.exec(col); } catch (_) { /* already there */ } }
-
-// Audits gain whereabouts / functional / a simple okay-partial-not_okay verdict.
-for (const col of [
-  'ALTER TABLE asset_audits ADD COLUMN belonging_to TEXT',
-  'ALTER TABLE asset_audits ADD COLUMN functional TEXT',
-]) { try { db.exec(col); } catch (_) { /* already there */ } }
-
 // ---------------------------------------------------------------- group chat membership
 // Private group channels: a channel row with is_dm=0 and a membership list. Public
 // channels (the single "announcements" broadcast channel) have no membership rows and
@@ -233,7 +215,6 @@ CREATE TABLE IF NOT EXISTS channel_members (
   PRIMARY KEY (channel_id, user_id)
 );
 `);
-try { db.exec("ALTER TABLE channels ADD COLUMN is_group INTEGER DEFAULT 0"); } catch (_) { /* already there */ }
 
 // ---------------------------------------------------------------- chat + form windows
 // Added feature set: an internal Slack-style chat (public channels + direct
@@ -314,6 +295,28 @@ CREATE TABLE IF NOT EXISTS asset_audits (
   FOREIGN KEY(asset_id) REFERENCES assets(id)
 );
 `);
+
+// ---------------------------------------------------------------- column migrations
+// IMPORTANT: these run AFTER every CREATE TABLE above so the target tables already
+// exist on a brand-new database (otherwise the ALTERs fail silently and the columns
+// are missing for the life of the process → 500s on asset save). Idempotent: each
+// ALTER throws "duplicate column" on an already-migrated DB and is swallowed.
+for (const stmt of [
+  // assets gain a class (Electronic / Physical) + the richer electronic-asset fields
+  "ALTER TABLE assets ADD COLUMN asset_class TEXT DEFAULT 'electronic'",
+  'ALTER TABLE assets ADD COLUMN brand TEXT',
+  'ALTER TABLE assets ADD COLUMN configuration TEXT',
+  'ALTER TABLE assets ADD COLUMN service_tag TEXT',
+  'ALTER TABLE assets ADD COLUMN laptop_agreement TEXT',
+  'ALTER TABLE assets ADD COLUMN laptop_agreement_name TEXT',
+  'ALTER TABLE assets ADD COLUMN vendor_name TEXT',
+  'ALTER TABLE assets ADD COLUMN date_of_return TEXT',
+  // audits gain whereabouts / functional / okay-partial-not_okay verdict
+  'ALTER TABLE asset_audits ADD COLUMN belonging_to TEXT',
+  'ALTER TABLE asset_audits ADD COLUMN functional TEXT',
+  // group chat flag
+  'ALTER TABLE channels ADD COLUMN is_group INTEGER DEFAULT 0',
+]) { try { db.exec(stmt); } catch (_) { /* column already exists */ } }
 
 // Keep a single company-wide broadcast channel ("announcements"). The old General
 // and Random channels have been retired — drop them (and their messages) if present.
