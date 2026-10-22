@@ -907,15 +907,31 @@ body::before {
    LAYOUT FIXES + HOME CLARITY + CAT EASTER EGG
    ============================================================ */
 
-/* ---- appbar: stop the centred nav from overlapping the brand
-        and the message/action icons. Put nav back in the flex flow. ---- */
+/* ---- appbar: one tidy row. Put the nav back in the flex flow (not absolutely
+        centred, where it overlapped the brand and the action icons), stop every
+        label from wrapping to a second line, and keep brand + actions from being
+        squeezed. ---- */
 @media (min-width: 901px) {
-  .appbar { gap: 10px; padding: 0 22px; }
-  .appbar .nav { position: static; left: auto; transform: none; margin: 0 6px; }
-  .appbar .spacer { flex: 1; }
+  .appbar { gap: 8px; padding: 0 18px; }
+  .appbar .nav { position: static; left: auto; transform: none; margin: 0 4px; flex-wrap: nowrap; min-width: 0; }
+  .appbar .spacer { flex: 1; min-width: 4px; }
+  .brand, .appbar-actions { flex-shrink: 0; }
 }
-.appbar-actions { gap: 4px; }
+.nav-link, .dropdown a, .user-dd a, .user-dd button { white-space: nowrap; }
+.nav-link { padding: 8px 10px; font-size: 13px; }
+.nav-link .icon-sm { flex-shrink: 0; }
+.appbar-actions { gap: 3px; }
 .appbar-actions .icon-btn { width: 36px; height: 36px; }
+
+/* user button: name over role, cleanly stacked (no <br>), never wrapping */
+.user-btn { padding: 4px 8px 4px 4px; gap: 7px; }
+.user-btn-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
+.user-btn .nm { white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.user-btn .rl { white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+
+/* drop the brand subtitle on tighter desktop widths so the nav has room */
+@media (max-width: 1150px) { .brand small { display: none; } }
+@media (max-width: 1050px) { .user-btn-text { display: none; } }
 
 /* keep the notification/message badge tidily on the icon corner */
 .appbar-actions .notif-badge { top: 2px; right: 2px; }
@@ -1241,3 +1257,60 @@ a:hover { color: #000; }
 /* avatars / current-chain step: accent bg with flipping text colour */
 .avatar { background: var(--surface-3); color: var(--text); }
 .chain-step.s-current .ci { background: var(--accent); color: var(--surface); }
+
+/* ============================================================
+   NEW: suggestion box · referrals · reimbursements ·
+        asset audit chart · group chat picker
+   ============================================================ */
+
+/* ---- suggestion box (submit) ---- */
+.sg-cats { display: flex; flex-wrap: wrap; gap: 8px; }
+.sg-cat { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px;
+  border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 550; color: var(--text-2); }
+.sg-cat input { position: absolute; opacity: 0; pointer-events: none; }
+.sg-cat .icon { color: var(--text-3); }
+.sg-cat:hover { background: var(--surface-2); }
+.sg-cat:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.sg-cat:has(input:checked) .icon { color: var(--accent); }
+.sg-anon { align-items: flex-start; gap: 10px; margin-top: 6px; }
+.sg-inbox-card { display: flex; flex-direction: column; }
+
+/* segmented-filter counts */
+.seg-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 999px; background: var(--surface-3); color: var(--text-2); font-size: 11px; font-weight: 700; margin-left: 4px; }
+.seg-btn.active .seg-count { background: rgba(255,255,255,.28); color: #fff; }
+.seg-soft .seg-btn.active .seg-count { background: var(--accent-soft); color: var(--accent); }
+
+/* ---- asset audit: status chart ---- */
+.audit-chart { display: grid; gap: 12px; }
+.audit-bar { display: grid; grid-template-columns: 1fr; gap: 6px; width: 100%; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.audit-bar:hover { border-color: var(--border-strong); }
+.audit-bar.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.audit-bar .ab-top { display: flex; justify-content: space-between; align-items: baseline; }
+.audit-bar .ab-label { font-weight: 650; font-size: 13.5px; }
+.audit-bar .ab-count { font-weight: 800; font-size: 18px; }
+.audit-bar .ab-track { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.audit-bar .ab-fill { display: block; height: 100%; border-radius: 999px; background: var(--text-3); transition: width .35s ease; }
+.audit-bar .ab-pct { font-size: 11.5px; }
+.audit-bar.v-okay   .ab-fill { background: #1f8a46; }
+.audit-bar.v-okay   .ab-count { color: #1f8a46; }
+.audit-bar.v-partial .ab-fill { background: #d98a00; }
+.audit-bar.v-partial .ab-count { color: #d98a00; }
+.audit-bar.v-notokay .ab-fill { background: var(--danger); }
+.audit-bar.v-notokay .ab-count { color: var(--danger); }
+.audit-bar.v-none    .ab-fill { background: var(--text-3); }
+@media (min-width: 720px) { .audit-chart { grid-template-columns: repeat(4, 1fr); } }
+
+.audit-asset-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.audit-asset-meta > div { display: flex; flex-direction: column; gap: 2px; }
+.audit-asset-meta span.muted { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+
+/* ---- group chat member picker ---- */
+.gr-selected { display: flex; flex-wrap: wrap; gap: 6px; min-height: 24px; margin: 4px 0 8px; }
+.gr-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px 3px 11px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 12.5px; font-weight: 600; }
+.gr-chip button { display: grid; place-items: center; width: 18px; height: 18px; border: none; border-radius: 50%;
+  background: transparent; color: var(--accent); cursor: pointer; }
+.gr-chip button:hover { background: rgba(0,0,0,.08); }

@@ -161,6 +161,80 @@ CREATE TABLE IF NOT EXISTS announcements (
 // Lightweight migration: add avatar column to users if it doesn't exist yet.
 try { db.exec('ALTER TABLE users ADD COLUMN avatar TEXT'); } catch (_) { /* already there */ }
 
+// ---------------------------------------------------------------- Referrals + Reimbursements
+// Employee referrals against open vacancies, and reimbursement claims routed to the
+// claimant's manager for approval (HR is kept in the loop). Both notify via the in-app
+// notification system (no external email is sent).
+db.exec(`
+CREATE TABLE IF NOT EXISTS referrals (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  vacancy_id     INTEGER,
+  referrer_id    INTEGER NOT NULL,
+  candidate_name TEXT,
+  candidate_email TEXT,
+  candidate_phone TEXT,
+  relationship   TEXT,
+  resume_file    TEXT,
+  resume_name    TEXT,
+  notes          TEXT,
+  status         TEXT DEFAULT 'submitted',   -- submitted | reviewing | shortlisted | hired | closed
+  hr_note        TEXT,
+  created_at     TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(referrer_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS reimbursements (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL,
+  manager_id     INTEGER,
+  category       TEXT,
+  title          TEXT,
+  amount         REAL,
+  currency       TEXT DEFAULT 'INR',
+  spent_on       TEXT,
+  description    TEXT,
+  receipt_file   TEXT,
+  receipt_name   TEXT,
+  status         TEXT DEFAULT 'pending',     -- pending | approved | rejected | reimbursed
+  decided_by     INTEGER,
+  decided_note   TEXT,
+  decided_at     TEXT,
+  created_at     TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
+`);
+
+// ---------------------------------------------------------------- asset / audit migrations
+// Assets gain a class (Electronic / Physical) and the richer electronic-asset fields.
+for (const col of [
+  "ALTER TABLE assets ADD COLUMN asset_class TEXT DEFAULT 'electronic'",
+  'ALTER TABLE assets ADD COLUMN brand TEXT',
+  'ALTER TABLE assets ADD COLUMN configuration TEXT',
+  'ALTER TABLE assets ADD COLUMN service_tag TEXT',
+  'ALTER TABLE assets ADD COLUMN laptop_agreement TEXT',
+  'ALTER TABLE assets ADD COLUMN vendor_name TEXT',
+  'ALTER TABLE assets ADD COLUMN date_of_return TEXT',
+]) { try { db.exec(col); } catch (_) { /* already there */ } }
+
+// Audits gain whereabouts / functional / a simple okay-partial-not_okay verdict.
+for (const col of [
+  'ALTER TABLE asset_audits ADD COLUMN belonging_to TEXT',
+  'ALTER TABLE asset_audits ADD COLUMN functional TEXT',
+]) { try { db.exec(col); } catch (_) { /* already there */ } }
+
+// ---------------------------------------------------------------- group chat membership
+// Private group channels: a channel row with is_dm=0 and a membership list. Public
+// channels (the single "announcements" broadcast channel) have no membership rows and
+// stay visible to everyone.
+db.exec(`
+CREATE TABLE IF NOT EXISTS channel_members (
+  channel_id  INTEGER NOT NULL,
+  user_id     INTEGER NOT NULL,
+  PRIMARY KEY (channel_id, user_id)
+);
+`);
+try { db.exec("ALTER TABLE channels ADD COLUMN is_group INTEGER DEFAULT 0"); } catch (_) { /* already there */ }
+
 // ---------------------------------------------------------------- chat + form windows
 // Added feature set: an internal Slack-style chat (public channels + direct
 // messages) and HR-controlled open/close "windows" for the KPI & Appraisal forms.
@@ -241,14 +315,20 @@ CREATE TABLE IF NOT EXISTS asset_audits (
 );
 `);
 
-// Seed a couple of default public channels so chat isn't an empty room.
+// Keep a single company-wide broadcast channel ("announcements"). The old General
+// and Random channels have been retired — drop them (and their messages) if present.
 function seedChannels() {
-  const empty = db.prepare('SELECT COUNT(*) c FROM channels').get().c === 0;
-  if (!empty) return;
-  const ins = db.prepare('INSERT INTO channels (name,topic,is_dm) VALUES (?,?,0)');
-  ins.run('general', 'Company-wide chatter and quick questions');
-  ins.run('random', 'Non-work banter, wins, memes and celebrations');
-  ins.run('announcements', 'Important updates from HR & Leadership');
+  const retired = db.prepare("SELECT id FROM channels WHERE is_dm=0 AND lower(name) IN ('general','random')").all();
+  for (const r of retired) {
+    try { db.exec(`DELETE FROM messages WHERE channel_id=${r.id};`); } catch (_) {}
+    try { db.exec(`DELETE FROM channel_reads WHERE channel_id=${r.id};`); } catch (_) {}
+    try { db.exec(`DELETE FROM channels WHERE id=${r.id};`); } catch (_) {}
+  }
+  const hasAnn = db.prepare("SELECT COUNT(*) c FROM channels WHERE is_dm=0 AND lower(name)='announcements'").get().c > 0;
+  if (!hasAnn) {
+    db.prepare('INSERT INTO channels (name,topic,is_dm) VALUES (?,?,0)')
+      .run('announcements', 'Important updates from HR & Leadership');
+  }
 }
 
 // ---------------------------------------------------------------- helpers
@@ -385,7 +465,7 @@ function seedAnnouncements() {
 
 // Allow `node db.js --reseed` to wipe and rebuild (dev convenience).
 if (require.main === module && process.argv.includes('--reseed')) {
-  for (const t of ['messages', 'channel_reads', 'channels', 'form_windows', 'uploads', 'approvals', 'forms', 'leaves', 'suggestions', 'vacancies', 'announcements', 'pages', 'users']) {
+  for (const t of ['messages', 'channel_reads', 'channel_members', 'channels', 'form_windows', 'uploads', 'approvals', 'forms', 'leaves', 'suggestions', 'referrals', 'reimbursements', 'vacancies', 'announcements', 'asset_audits', 'assets', 'pages', 'users']) {
     try { db.exec(`DELETE FROM ${t};`); } catch (_) {}
   }
   seed();

@@ -56,6 +56,16 @@ function notify(userId, text, link, type) {
   if (!userId) return;
   db.prepare('INSERT INTO notifications (user_id,text,link,type) VALUES (?,?,?,?)').run(userId, text, link || null, type || 'info');
 }
+// Email hook. Email delivery is intentionally disabled for now (the portal uses in-app
+// notifications only). This is the single place to wire a real transport (e.g. nodemailer
+// driven by SMTP_* env vars) later — every feature that "emails" calls through here so
+// turning email on is a one-function change. `to` may be omitted to mean "whole org".
+function sendOrgEmail(subject, body, from, to) {
+  try {
+    const who = to ? (Array.isArray(to) ? to.length + ' recipient(s)' : to) : 'the whole organisation';
+    console.log(`[email:disabled] would send "${subject}" to ${who}` + (from ? ` (from ${from.name})` : ''));
+  } catch (_) { /* never let email logging break a request */ }
+}
 function getUser(id) { return db.prepare('SELECT * FROM users WHERE id=?').get(id); }
 function requireAuth(req, res, next) {
   if (!req.session.uid) return res.status(401).json({ error: 'Not authenticated' });
@@ -121,6 +131,12 @@ function approvalChain(userId) {
 }
 // Set of ancestor ids (managers up the chain) — used for view/edit rights.
 function ancestorIds(userId) { return new Set(approvalChain(userId)); }
+// A non-owner who may edit an associate's form & have those edits persist: anyone in
+// the reporting line, plus HR and leadership. (Fixes manager/HR edits + comments not
+// showing to the associate because they were silently dropped on save.)
+function canEditOthersForm(ownerId, actor) {
+  return ancestorIds(ownerId).has(actor.id) || isHR(actor) || ['ceo', 'director'].includes(actor.role);
+}
 
 function stageLabel(form) {
   if (form.status === 'draft') return 'Draft — with employee';
@@ -326,16 +342,19 @@ app.post('/api/form/:id/save', requireAuth, (req, res) => {
   const f = db.prepare('SELECT * FROM forms WHERE id=?').get(Number(req.params.id));
   if (!f) return res.status(404).json({ error: 'Not found' });
   const isOwner = f.user_id === req.user.id;
-  const isAncestor = ancestorIds(f.user_id).has(req.user.id);
-  if (!isAncestor && !(isOwner && (f.status === 'draft' || f.status === 'sent_back')))
+  const canFull = canEditOthersForm(f.user_id, req.user);
+  if (!canFull && !(isOwner && (f.status === 'draft' || f.status === 'sent_back')))
     return res.status(403).json({ error: 'Form is locked — awaiting approval' });
   // Owners can only edit while HR has the filing window open (managers/HR exempt).
-  if (isOwner && !isAncestor && !formWindowOpen(f.type, f.fy, f.user_id))
+  if (isOwner && !canFull && !formWindowOpen(f.type, f.fy, f.user_id))
     return res.status(403).json({ error: `The ${f.type.toUpperCase()} window is closed by HR — you can't edit right now.` });
   const data = normMgrComments(req.body.data || {});
   db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=?, updated_at=datetime(\'now\') WHERE id=?')
     .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
-  if (isAncestor && !isOwner) db.prepare('INSERT INTO approvals (form_id,actor_id,action,comment) VALUES (?,?,?,?)').run(f.id, req.user.id, 'edit', 'Manager edited the form');
+  if (canFull && !isOwner) {
+    db.prepare('INSERT INTO approvals (form_id,actor_id,action,comment) VALUES (?,?,?,?)').run(f.id, req.user.id, 'edit', 'Edited the form');
+    notify(f.user_id, `${req.user.name} updated your ${f.type.toUpperCase()} ${f.quarter} form`, '#/form/' + f.id, 'info');
+  }
   res.json({ form: formView(getUser0(f.id), req.user) });
 });
 function getUser0(id) { return db.prepare('SELECT * FROM forms WHERE id=?').get(id); }
@@ -349,13 +368,26 @@ app.post('/api/form/:id/submit', requireAuth, (req, res) => {
   if (f.status === 'approved') return res.status(400).json({ error: 'Form is already approved and locked' });
   if (!formWindowOpen(f.type, f.fy, f.user_id))
     return res.status(403).json({ error: `The ${f.type.toUpperCase()} window is closed by HR — submission isn't allowed right now.` });
-  const chain = approvalChain(f.user_id);
-  if (chain.length === 0) return res.status(400).json({ error: 'No reporting manager configured for approval' });
+  let chain = approvalChain(f.user_id);
+  if (chain.length === 0) {
+    // Fallback for anyone without a reporting manager (e.g. HR / leadership): route to
+    // the top of the org so the form doesn't dead-end and the reviewer actually gets it.
+    const top = db.prepare(`SELECT id FROM users WHERE active=1 AND id!=? AND role IN ('ceo','director','hr_admin')
+      ORDER BY CASE role WHEN 'ceo' THEN 0 WHEN 'director' THEN 1 ELSE 2 END LIMIT 1`).get(f.user_id);
+    if (top) chain = [top.id];
+  }
+  if (chain.length === 0) return res.status(400).json({ error: 'No approver configured — ask HR to set your reporting manager.' });
   if (req.body.data) db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?').run(JSON.stringify(req.body.data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
   db.prepare("UPDATE forms SET status='in_review', stage_index=0, chain=?, locked=1, submit_count=submit_count+1, updated_at=datetime('now') WHERE id=?")
     .run(JSON.stringify(chain), f.id);
   db.prepare('INSERT INTO approvals (form_id,actor_id,action,stage,comment) VALUES (?,?,?,?,?)').run(f.id, req.user.id, 'submit', 0, req.body.comment || 'Submitted for review');
-  notify(chain[0], `${req.user.name} submitted their ${f.type.toUpperCase()} ${f.quarter} for your approval`, '#/form/' + f.id, 'submit');
+  const label = f.type === 'appraisal' ? 'self-appraisal' : `${f.type.toUpperCase()} ${f.quarter}`;
+  notify(chain[0], `${req.user.name} submitted their ${label} for your approval`, '#/form/' + f.id, 'submit');
+  // Keep HR in the loop on appraisal submissions so they can always find them.
+  if (f.type === 'appraisal') {
+    for (const hr of db.prepare("SELECT id FROM users WHERE role IN ('hr','hr_admin') AND active=1").all())
+      if (hr.id !== chain[0] && hr.id !== f.user_id) notify(hr.id, `${req.user.name} submitted their self-appraisal`, '#/form/' + f.id, 'submit');
+  }
   res.json({ form: formView(db.prepare('SELECT * FROM forms WHERE id=?').get(f.id), req.user) });
 });
 
@@ -388,12 +420,12 @@ app.post('/api/form/:id/approve', requireAuth, (req, res) => {
   const chain = JSON.parse(f.chain || '[]');
   if (chain[f.stage_index] !== req.user.id) return res.status(403).json({ error: 'It is not your turn to approve this form' });
   const comment = req.body.comment || '';
-  const isAncestor = ancestorIds(f.user_id).has(req.user.id);
+  const canFull = canEditOthersForm(f.user_id, req.user);
   // Persist the approver's in-form edits (field changes + row comments) and/or a
   // per-quarter manager comment, so the associate actually sees them afterwards.
   let data = JSON.parse(f.data || '{}');
   let dataChanged = false;
-  if (req.body.data && isAncestor) { data = req.body.data; dataChanged = true; }
+  if (req.body.data && canFull) { data = normMgrComments(req.body.data); dataChanged = true; }
   if (req.body.managerComment) {
     upsertMgrComment(data, f.quarter, req.user, req.body.managerComment);
     dataChanged = true;
@@ -424,7 +456,7 @@ app.post('/api/form/:id/sendback', requireAuth, (req, res) => {
   const comment = req.body.comment || 'Please revise and resubmit.';
   // Persist the manager's in-form edits (field changes + row comments) before returning
   // the form, so the associate sees exactly what the manager changed.
-  if (req.body.data && ancestorIds(f.user_id).has(req.user.id)) {
+  if (req.body.data && canEditOthersForm(f.user_id, req.user)) {
     const data = normMgrComments(req.body.data);
     db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?')
       .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
@@ -598,35 +630,7 @@ app.post('/api/suggestions/:id', requireAuth, requireRole('hr', 'hr_admin', 'ceo
   res.json({ ok: true });
 });
 
-// ---------------------------------------------------------------- leave
-app.post('/api/leave', requireAuth, (req, res) => {
-  const { type, from_date, to_date, days, reason } = req.body || {};
-  db.prepare('INSERT INTO leaves (user_id,type,from_date,to_date,days,reason) VALUES (?,?,?,?,?,?)')
-    .run(req.user.id, type || 'Casual', from_date, to_date, Number(days) || 0, reason || '');
-  res.json({ ok: true });
-});
-app.get('/api/leave', requireAuth, (req, res) => {
-  let rows;
-  if (isHR(req.user) || ['ceo', 'director'].includes(req.user.role)) {
-    rows = db.prepare('SELECT l.*, u.name FROM leaves l JOIN users u ON u.id=l.user_id ORDER BY l.created_at DESC').all();
-  } else {
-    const reports = [req.user.id, ...subtreeIds(req.user.id)];
-    const ph = reports.map(() => '?').join(',');
-    rows = db.prepare(`SELECT l.*, u.name FROM leaves l JOIN users u ON u.id=l.user_id WHERE l.user_id IN (${ph}) ORDER BY l.created_at DESC`).all(...reports);
-  }
-  res.json({ leaves: rows });
-});
-app.post('/api/leave/:id', requireAuth, (req, res) => {
-  const l = db.prepare('SELECT * FROM leaves WHERE id=?').get(Number(req.params.id));
-  if (!l) return res.status(404).json({ error: 'Not found' });
-  const canDecide = ancestorIds(l.user_id).has(req.user.id) || isHR(req.user);
-  if (!canDecide) return res.status(403).json({ error: 'Not allowed' });
-  const st = req.body.status || 'approved';
-  db.prepare('UPDATE leaves SET status=?, decided_by=?, decided_note=? WHERE id=?')
-    .run(st, req.user.id, req.body.note || '', l.id);
-  notify(l.user_id, `Your leave request was ${st} by ${req.user.name}`, '#/leave', st === 'approved' ? 'approved' : 'sent_back');
-  res.json({ ok: true });
-});
+// Leave requests have been removed from the portal.
 
 // ---------------------------------------------------------------- vacancies
 app.get('/api/vacancies', requireAuth, (req, res) => {
@@ -643,6 +647,99 @@ app.post('/api/vacancies/:id/close', requireAuth, requireRole('hr', 'hr_admin', 
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------- employee referrals
+// Any associate can refer a candidate for an open vacancy. HR is notified (in-app).
+app.get('/api/referrals', requireAuth, (req, res) => {
+  let rows;
+  if (isAdminLevel(req.user)) {
+    rows = db.prepare(`SELECT r.*, u.name AS referrer, v.title AS vacancy_title
+      FROM referrals r LEFT JOIN users u ON u.id=r.referrer_id LEFT JOIN vacancies v ON v.id=r.vacancy_id
+      ORDER BY r.created_at DESC`).all();
+  } else {
+    rows = db.prepare(`SELECT r.*, u.name AS referrer, v.title AS vacancy_title
+      FROM referrals r LEFT JOIN users u ON u.id=r.referrer_id LEFT JOIN vacancies v ON v.id=r.vacancy_id
+      WHERE r.referrer_id=? ORDER BY r.created_at DESC`).all(req.user.id);
+  }
+  res.json({ referrals: rows });
+});
+app.post('/api/referrals', requireAuth, (req, res) => {
+  const b = req.body || {};
+  if (!b.candidate_name || !String(b.candidate_name).trim()) return res.status(400).json({ error: "Candidate's name is required" });
+  const vacId = b.vacancy_id ? Number(b.vacancy_id) : null;
+  const vac = vacId ? db.prepare('SELECT * FROM vacancies WHERE id=?').get(vacId) : null;
+  db.prepare(`INSERT INTO referrals (vacancy_id,referrer_id,candidate_name,candidate_email,candidate_phone,relationship,resume_file,resume_name,notes)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(
+    vac ? vac.id : null, req.user.id,
+    String(b.candidate_name).trim().slice(0, 120), String(b.candidate_email || '').slice(0, 160),
+    String(b.candidate_phone || '').slice(0, 40), String(b.relationship || '').slice(0, 120),
+    b.resume_file || null, b.resume_name || null, String(b.notes || '').slice(0, 2000));
+  const role = vac ? ` for ${vac.title}` : '';
+  for (const hr of db.prepare("SELECT id FROM users WHERE role IN ('hr','hr_admin') AND active=1").all())
+    notify(hr.id, `${req.user.name} referred ${String(b.candidate_name).trim()}${role}`, '#/referrals', 'submit');
+  sendOrgEmail(`[Justwords] New referral${role}`, `${req.user.name} referred ${b.candidate_name}`, req.user, 'HR');
+  res.json({ ok: true });
+});
+app.post('/api/referrals/:id', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
+  const r = db.prepare('SELECT * FROM referrals WHERE id=?').get(Number(req.params.id));
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const status = ['submitted', 'reviewing', 'shortlisted', 'hired', 'closed'].includes(req.body.status) ? req.body.status : r.status;
+  db.prepare('UPDATE referrals SET status=?, hr_note=? WHERE id=?').run(status, String(req.body.hr_note || '').slice(0, 2000), r.id);
+  notify(r.referrer_id, `Your referral of ${r.candidate_name} is now "${status}"`, '#/referrals', 'info');
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------- reimbursements
+// An associate submits a claim; it routes to their reporting manager for approval, with
+// HR kept in the loop. Managers/HR decide (approve / reject / mark reimbursed).
+app.get('/api/reimbursements', requireAuth, (req, res) => {
+  let rows;
+  if (isAdminLevel(req.user)) {
+    rows = db.prepare(`SELECT r.*, u.name, m.name AS manager_name FROM reimbursements r
+      JOIN users u ON u.id=r.user_id LEFT JOIN users m ON m.id=r.manager_id ORDER BY r.created_at DESC`).all();
+  } else {
+    const scope = [req.user.id, ...subtreeIds(req.user.id)];
+    const ph = scope.map(() => '?').join(',');
+    rows = db.prepare(`SELECT r.*, u.name, m.name AS manager_name FROM reimbursements r
+      JOIN users u ON u.id=r.user_id LEFT JOIN users m ON m.id=r.manager_id
+      WHERE r.user_id IN (${ph}) ORDER BY r.created_at DESC`).all(...scope);
+  }
+  res.json({ reimbursements: rows });
+});
+app.post('/api/reimbursements', requireAuth, (req, res) => {
+  const b = req.body || {};
+  const amount = Number(b.amount);
+  if (!b.title || !String(b.title).trim()) return res.status(400).json({ error: 'A short title is required' });
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'Enter a valid amount' });
+  const managerId = req.user.manager_id || null;
+  const info = db.prepare(`INSERT INTO reimbursements (user_id,manager_id,category,title,amount,currency,spent_on,description,receipt_file,receipt_name)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    req.user.id, managerId, String(b.category || 'General').slice(0, 60), String(b.title).trim().slice(0, 160),
+    amount, String(b.currency || 'INR').slice(0, 8), String(b.spent_on || '').slice(0, 40),
+    String(b.description || '').slice(0, 2000), b.receipt_file || null, b.receipt_name || null);
+  const label = `${b.currency || 'INR'} ${amount} — ${String(b.title).trim()}`;
+  if (managerId) notify(managerId, `${req.user.name} submitted a reimbursement for approval: ${label}`, '#/reimbursements', 'submit');
+  for (const hr of db.prepare("SELECT id FROM users WHERE role IN ('hr','hr_admin') AND active=1").all())
+    if (hr.id !== managerId) notify(hr.id, `New reimbursement from ${req.user.name}: ${label}`, '#/reimbursements', 'submit');
+  sendOrgEmail(`[Justwords] Reimbursement for approval: ${label}`, String(b.description || ''), req.user, 'manager + HR');
+  res.json({ ok: true, id: Number(info.lastInsertRowid) });
+});
+app.post('/api/reimbursements/:id/decide', requireAuth, (req, res) => {
+  const r = db.prepare('SELECT * FROM reimbursements WHERE id=?').get(Number(req.params.id));
+  if (!r) return res.status(404).json({ error: 'Not found' });
+  const canDecide = r.manager_id === req.user.id || ancestorIds(r.user_id).has(req.user.id) || isAdminLevel(req.user);
+  if (!canDecide) return res.status(403).json({ error: 'Not allowed to decide this claim' });
+  const status = ['approved', 'rejected', 'reimbursed', 'pending'].includes(req.body.status) ? req.body.status : 'approved';
+  db.prepare("UPDATE reimbursements SET status=?, decided_by=?, decided_note=?, decided_at=datetime('now') WHERE id=?")
+    .run(status, req.user.id, String(req.body.note || '').slice(0, 1000), r.id);
+  notify(r.user_id, `Your reimbursement "${r.title}" was ${status} by ${req.user.name}`, '#/reimbursements', status === 'rejected' ? 'sent_back' : 'approved');
+  // When a manager approves, let HR know it's ready to process.
+  if (status === 'approved' && !isAdminLevel(req.user)) {
+    for (const hr of db.prepare("SELECT id FROM users WHERE role IN ('hr','hr_admin') AND active=1").all())
+      notify(hr.id, `${req.user.name} approved ${getUser(r.user_id).name}'s reimbursement "${r.title}" — ready to process`, '#/reimbursements', 'approved');
+  }
+  res.json({ ok: true });
+});
+
 // ---------------------------------------------------------------- announcements / news
 app.get('/api/announcements', requireAuth, (req, res) => {
   const rows = db.prepare(`
@@ -654,9 +751,15 @@ app.get('/api/announcements', requireAuth, (req, res) => {
 app.post('/api/announcements', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   const { category, title, body, pinned } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Title is required' });
-  db.prepare('INSERT INTO announcements (category,title,body,pinned,posted_by) VALUES (?,?,?,?,?)')
+  const info = db.prepare('INSERT INTO announcements (category,title,body,pinned,posted_by) VALUES (?,?,?,?,?)')
     .run(category || 'Announcement', String(title).trim(), body || '', pinned ? 1 : 0, req.user.id);
-  res.json({ ok: true });
+  // Notify the entire organisation. (Email delivery is disabled for now — this uses the
+  // in-app notification system; sendOrgEmail() is the future hook for real email.)
+  const cat = category || 'Announcement';
+  const everyone = db.prepare('SELECT id FROM users WHERE active=1 AND id!=?').all(req.user.id);
+  for (const u of everyone) notify(u.id, `New ${cat}: ${String(title).trim()}`, '#/dashboard', 'info');
+  sendOrgEmail(`[Justwords] ${cat}: ${String(title).trim()}`, body || '', req.user);
+  res.json({ ok: true, id: Number(info.lastInsertRowid), notified: everyone.length });
 });
 app.delete('/api/announcements/:id', requireAuth, requireRole('hr', 'hr_admin', 'ceo', 'director'), (req, res) => {
   db.prepare('DELETE FROM announcements WHERE id=?').run(Number(req.params.id));
@@ -670,13 +773,25 @@ function requireAssetView(req, res, next) {
   if (!canViewAssets(req.user)) return res.status(403).json({ error: 'Not allowed to view assets' });
   next();
 }
-const ASSET_FIELDS = ['category', 'specification', 'identity_no', 'owned_by', 'jw_asset_no', 'ownership', 'issued_to', 'issued_on', 'audit_date', 'notes'];
+// Asset fields. `category` here is the specific item type (Laptop, Monitor, Chair…);
+// `asset_class` splits the register into Electronic vs Physical assets.
+const ASSET_FIELDS = [
+  'asset_class', 'category', 'brand', 'configuration', 'specification', 'identity_no',
+  'service_tag', 'laptop_agreement', 'ownership', 'vendor_name', 'jw_asset_no',
+  'owned_by', 'issued_to', 'issued_on', 'date_of_return', 'audit_date', 'notes',
+];
 function cleanAsset(body) {
   const a = {};
   for (const k of ASSET_FIELDS) a[k] = body[k] != null ? String(body[k]).slice(0, 500) : '';
+  a.asset_class = a.asset_class === 'physical' ? 'physical' : 'electronic';
   a.ownership = a.ownership === 'rent' ? 'rent' : 'acquisition';
+  // Keep only the number that matches the ownership choice.
+  if (a.ownership === 'rent') a.jw_asset_no = ''; else a.vendor_name = '';
   return a;
 }
+const ASSET_COLS = ASSET_FIELDS.join(',');
+const ASSET_VALS = ASSET_FIELDS.map(f => '@' + f).join(',');
+const ASSET_SET = ASSET_FIELDS.map(f => `${f}=@${f}`).join(',');
 
 app.get('/api/assets', requireAuth, requireAssetView, (req, res) => {
   const assets = db.prepare('SELECT * FROM assets ORDER BY updated_at DESC, id DESC').all();
@@ -684,10 +799,9 @@ app.get('/api/assets', requireAuth, requireAssetView, (req, res) => {
 });
 app.post('/api/assets', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const a = cleanAsset(req.body || {});
-  if (!a.category && !a.jw_asset_no && !a.identity_no)
+  if (!a.category && !a.jw_asset_no && !a.identity_no && !a.service_tag)
     return res.status(400).json({ error: 'Add at least a category or an asset number' });
-  const info = db.prepare(`INSERT INTO assets (category,specification,identity_no,owned_by,jw_asset_no,ownership,issued_to,issued_on,audit_date,notes,created_by)
-    VALUES (@category,@specification,@identity_no,@owned_by,@jw_asset_no,@ownership,@issued_to,@issued_on,@audit_date,@notes,@created_by)`)
+  const info = db.prepare(`INSERT INTO assets (${ASSET_COLS},created_by) VALUES (${ASSET_VALS},@created_by)`)
     .run({ ...a, created_by: req.user.id });
   res.json({ ok: true, id: info.lastInsertRowid });
 });
@@ -695,9 +809,7 @@ app.put('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin', 'director'
   const f = db.prepare('SELECT * FROM assets WHERE id=?').get(Number(req.params.id));
   if (!f) return res.status(404).json({ error: 'Asset not found' });
   const a = cleanAsset(req.body || {});
-  db.prepare(`UPDATE assets SET category=@category,specification=@specification,identity_no=@identity_no,owned_by=@owned_by,
-    jw_asset_no=@jw_asset_no,ownership=@ownership,issued_to=@issued_to,issued_on=@issued_on,audit_date=@audit_date,notes=@notes,
-    updated_at=datetime('now') WHERE id=@id`).run({ ...a, id: f.id });
+  db.prepare(`UPDATE assets SET ${ASSET_SET}, updated_at=datetime('now') WHERE id=@id`).run({ ...a, id: f.id });
   res.json({ ok: true });
 });
 app.delete('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
@@ -709,19 +821,26 @@ app.delete('/api/assets/:id', requireAuth, requireRole('hr', 'hr_admin', 'direct
 
 // Audit log: list audit entries (optionally for one asset) and record a new one.
 app.get('/api/asset-audits', requireAuth, requireAssetView, (req, res) => {
-  const rows = db.prepare(`SELECT aa.*, u.name AS audited_by_name, a.category, a.jw_asset_no, a.identity_no, a.issued_to
+  const rows = db.prepare(`SELECT aa.*, u.name AS audited_by_name, a.category, a.asset_class, a.jw_asset_no, a.identity_no, a.issued_to
     FROM asset_audits aa LEFT JOIN users u ON u.id=aa.audited_by LEFT JOIN assets a ON a.id=aa.asset_id
     ORDER BY aa.created_at DESC`).all();
   res.json({ audits: rows });
 });
+// Audit verdict is one of okay | partial | not_okay. The audit date defaults to today
+// (the auditor doesn't pick it), and we capture where the asset is / who holds it now,
+// whether it's functional, and any notes.
+const AUDIT_STATUS = ['okay', 'partial', 'not_okay'];
 app.post('/api/asset-audits', requireAuth, requireRole('hr', 'hr_admin', 'director', 'ceo'), (req, res) => {
   const assetId = Number(req.body.asset_id);
   const asset = db.prepare('SELECT * FROM assets WHERE id=?').get(assetId);
   if (!asset) return res.status(404).json({ error: 'Asset not found' });
-  const auditDate = String(req.body.audit_date || '').slice(0, 40) || new Date().toISOString().slice(0, 10);
-  db.prepare('INSERT INTO asset_audits (asset_id,audit_date,status,condition,remarks,audited_by) VALUES (?,?,?,?,?,?)')
-    .run(assetId, auditDate, String(req.body.status || '').slice(0, 60), String(req.body.condition || '').slice(0, 60), String(req.body.remarks || '').slice(0, 1000), req.user.id);
-  // Keep the asset's headline audit date in sync with its latest audit.
+  const auditDate = new Date().toISOString().slice(0, 10);   // taken automatically
+  const status = AUDIT_STATUS.includes(req.body.status) ? req.body.status : 'okay';
+  db.prepare('INSERT INTO asset_audits (asset_id,audit_date,status,belonging_to,functional,remarks,audited_by) VALUES (?,?,?,?,?,?,?)')
+    .run(assetId, auditDate, status,
+      String(req.body.belonging_to || '').slice(0, 300),
+      String(req.body.functional || '').slice(0, 60),
+      String(req.body.remarks || '').slice(0, 1000), req.user.id);
   db.prepare("UPDATE assets SET audit_date=?, updated_at=datetime('now') WHERE id=?").run(auditDate, assetId);
   res.json({ ok: true });
 });
@@ -736,7 +855,8 @@ app.get('/api/admin/stats', requireAuth, requireAdmin, (req, res) => {
     approved: db.prepare("SELECT COUNT(*) c FROM forms WHERE status='approved'").get().c,
     in_review: db.prepare("SELECT COUNT(*) c FROM forms WHERE status='in_review'").get().c,
     open_suggestions: db.prepare("SELECT COUNT(*) c FROM suggestions WHERE status='open'").get().c,
-    pending_leaves: db.prepare("SELECT COUNT(*) c FROM leaves WHERE status='pending'").get().c,
+    open_referrals: db.prepare("SELECT COUNT(*) c FROM referrals WHERE status IN ('submitted','reviewing')").get().c,
+    pending_reimb: db.prepare("SELECT COUNT(*) c FROM reimbursements WHERE status='pending'").get().c,
   };
   const byDept = db.prepare('SELECT department, COUNT(*) c FROM users WHERE active=1 GROUP BY department ORDER BY c DESC').all();
   const formStatus = db.prepare('SELECT status, COUNT(*) c FROM forms GROUP BY status').all();
@@ -787,45 +907,89 @@ app.delete('/api/form-windows/user/:id', requireAuth, requireHR, (req, res) => {
 
 // ---------------------------------------------------------------- chat (channels + DMs)
 function dmKey(a, b) { const lo = Math.min(a, b), hi = Math.max(a, b); return lo + ':' + hi; }
+function isGroupMember(channelId, userId) {
+  return !!db.prepare('SELECT 1 FROM channel_members WHERE channel_id=? AND user_id=?').get(channelId, userId);
+}
 function canAccessChannel(ch, userId) {
   if (!ch) return false;
-  if (!ch.is_dm) return true;                    // public channels: everyone
-  return ch.dm_a === userId || ch.dm_b === userId; // DMs: participants only
+  if (ch.is_dm) return ch.dm_a === userId || ch.dm_b === userId; // DMs: participants only
+  if (ch.is_group) return isGroupMember(ch.id, userId);          // groups: members only
+  return true;                                                   // public channels: everyone
+}
+function groupMembers(channelId) {
+  return db.prepare(`SELECT u.id,u.name,u.designation,u.avatar FROM channel_members cm
+    JOIN users u ON u.id=cm.user_id WHERE cm.channel_id=? ORDER BY u.name`).all(channelId);
 }
 function channelView(ch, userId) {
   const last = db.prepare('SELECT m.body, m.created_at, u.name FROM messages m JOIN users u ON u.id=m.user_id WHERE m.channel_id=? ORDER BY m.id DESC LIMIT 1').get(ch.id);
   const readRow = db.prepare('SELECT last_read FROM channel_reads WHERE user_id=? AND channel_id=?').get(userId, ch.id);
   const lastRead = readRow ? readRow.last_read : '1970-01-01';
   const unread = db.prepare("SELECT COUNT(*) c FROM messages WHERE channel_id=? AND user_id!=? AND created_at > ?").get(ch.id, userId, lastRead).c;
-  let name = ch.name, topic = ch.topic, other = null;
+  let name = ch.name, topic = ch.topic, other = null, members = null;
   if (ch.is_dm) {
     const otherId = ch.dm_a === userId ? ch.dm_b : ch.dm_a;
     other = getUser(otherId);
     name = other ? other.name : 'Direct message';
     topic = other ? (other.designation || '') : '';
+  } else if (ch.is_group) {
+    members = groupMembers(ch.id);
+    if (!topic) topic = members.map(m => m.name.split(' ')[0]).join(', ');
   }
   return {
-    id: ch.id, is_dm: !!ch.is_dm, name, topic,
+    id: ch.id, is_dm: !!ch.is_dm, is_group: !!ch.is_group, name, topic,
     other: other ? { id: other.id, name: other.name, designation: other.designation, avatar: other.avatar } : null,
+    members, member_count: members ? members.length : null,
     unread, last_body: last ? last.body : '', last_at: last ? last.created_at : ch.created_at, last_by: last ? last.name : '',
   };
 }
-// Overview: public channels + my DMs, ordered by most-recent activity.
+// Channels visible to me: public channels, group channels I belong to, and my DMs.
+function myChannels(userId) {
+  return db.prepare(`SELECT * FROM channels WHERE
+      (is_dm=0 AND IFNULL(is_group,0)=0)
+      OR (is_dm=1 AND (dm_a=? OR dm_b=?))
+      OR (IFNULL(is_group,0)=1 AND id IN (SELECT channel_id FROM channel_members WHERE user_id=?))`)
+    .all(userId, userId, userId);
+}
+// Overview: public channels + my group chats + my DMs, ordered by most-recent activity.
 app.get('/api/chat/overview', requireAuth, (req, res) => {
-  const chans = db.prepare('SELECT * FROM channels WHERE is_dm=0 OR dm_a=? OR dm_b=?').all(req.user.id, req.user.id);
-  const views = chans.map(c => channelView(c, req.user.id));
+  const views = myChannels(req.user.id).map(c => channelView(c, req.user.id));
   views.sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
   const totalUnread = views.reduce((s, v) => s + v.unread, 0);
-  res.json({ channels: views.filter(v => !v.is_dm), dms: views.filter(v => v.is_dm), totalUnread });
+  res.json({
+    channels: views.filter(v => !v.is_dm && !v.is_group),
+    groups: views.filter(v => v.is_group),
+    dms: views.filter(v => v.is_dm),
+    totalUnread,
+  });
 });
 app.get('/api/chat/unread', requireAuth, (req, res) => {
-  const chans = db.prepare('SELECT id FROM channels WHERE is_dm=0 OR dm_a=? OR dm_b=?').all(req.user.id, req.user.id);
+  const chans = myChannels(req.user.id);
   let unread = 0;
   for (const c of chans) {
     const r = db.prepare('SELECT last_read FROM channel_reads WHERE user_id=? AND channel_id=?').get(req.user.id, c.id);
     unread += db.prepare("SELECT COUNT(*) c FROM messages WHERE channel_id=? AND user_id!=? AND created_at > ?").get(c.id, req.user.id, r ? r.last_read : '1970-01-01').c;
   }
   res.json({ unread });
+});
+// Create a private group chat with selected members (creator is always included).
+app.post('/api/chat/groups', requireAuth, (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: 'Group name required' });
+  const ids = Array.isArray(req.body.member_ids) ? req.body.member_ids.map(Number).filter(Boolean) : [];
+  const members = new Set([req.user.id, ...ids]);
+  if (members.size < 2) return res.status(400).json({ error: 'Add at least one other person' });
+  const info = db.prepare('INSERT INTO channels (name,topic,is_dm,is_group,created_by) VALUES (?,?,0,1,?)')
+    .run(name, String(req.body.topic || '').slice(0, 200), req.user.id);
+  const cid = Number(info.lastInsertRowid);
+  const add = db.prepare('INSERT OR IGNORE INTO channel_members (channel_id,user_id) VALUES (?,?)');
+  for (const uid of members) if (getUser(uid)) add.run(cid, uid);
+  for (const uid of members) if (uid !== req.user.id) notify(uid, `${req.user.name} added you to the group "${name}"`, '#/chat/' + cid, 'info');
+  res.json({ id: cid });
+});
+app.get('/api/chat/channels/:id/members', requireAuth, (req, res) => {
+  const ch = db.prepare('SELECT * FROM channels WHERE id=?').get(Number(req.params.id));
+  if (!canAccessChannel(ch, req.user.id)) return res.status(403).json({ error: 'No access' });
+  res.json({ members: ch.is_group ? groupMembers(ch.id) : [] });
 });
 app.post('/api/chat/channels', requireAuth, (req, res) => {
   const name = String(req.body.name || '').trim().toLowerCase().replace(/[^a-z0-9\- ]+/g, '').replace(/\s+/g, '-').slice(0, 40);
@@ -867,10 +1031,13 @@ app.post('/api/chat/channels/:id/messages', requireAuth, (req, res) => {
   if (!body) return res.status(400).json({ error: 'Message is empty' });
   const info = db.prepare('INSERT INTO messages (channel_id,user_id,body) VALUES (?,?,?)').run(ch.id, req.user.id, body);
   db.prepare('INSERT OR REPLACE INTO channel_reads (user_id,channel_id,last_read) VALUES (?,?,datetime(\'now\'))').run(req.user.id, ch.id);
-  // notify the other participant of a DM
+  // notify the other participant of a DM, or the other members of a group
   if (ch.is_dm) {
     const otherId = ch.dm_a === req.user.id ? ch.dm_b : ch.dm_a;
     notify(otherId, `${req.user.name} messaged you: ${body.slice(0, 60)}`, '#/chat/' + ch.id, 'info');
+  } else if (ch.is_group) {
+    for (const m of groupMembers(ch.id))
+      if (m.id !== req.user.id) notify(m.id, `${req.user.name} in ${ch.name}: ${body.slice(0, 50)}`, '#/chat/' + ch.id, 'info');
   }
   res.json({ id: Number(info.lastInsertRowid) });
 });

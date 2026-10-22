@@ -105,11 +105,20 @@ function toast(msg, kind) {
 function modal(title, bodyHTML, footHTML) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `<div class="modal-bg" data-close><div class="modal">
-    <div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close>${icon('x')}</button></div>
+    <div class="modal-head"><h3>${esc(title)}</h3><button class="icon-btn" data-close aria-label="Close">${icon('x')}</button></div>
     <div class="modal-body">${bodyHTML}</div>
     ${footHTML ? `<div class="modal-foot">${footHTML}</div>` : ''}
   </div></div>`;
-  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeModal(); }));
+  wireClose(root);
+}
+// Wire every [data-close] in `root` to close the modal. A click anywhere on a close
+// control (even on the SVG icon inside the X button) closes; a click on the backdrop
+// closes only when it lands on the backdrop itself, not when it bubbles up from content.
+function wireClose(root) {
+  root.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', e => {
+    if (el.classList.contains('modal-bg') && e.target !== el) return; // ignore clicks inside the dialog
+    closeModal();
+  }));
 }
 function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
@@ -124,8 +133,9 @@ const NAV = [
     { t: 'Handbook', r: '#/page/handbook', i: 'book' },
     { t: 'Schemes', r: '#/page/schemes', i: 'layers' },
     { t: 'Policies', r: '#/page/policies', i: 'shield' },
-    { t: 'Leave', r: '#/leave', i: 'calendar' },
     { t: 'Vacancies', r: '#/vacancies', i: 'brief' },
+    { t: 'Refer a Candidate', r: '#/referrals', i: 'users' },
+    { t: 'Reimbursements', r: '#/reimbursements', i: 'file' },
   ] },
   { label: 'SOP Documents', icon: 'file', items: [
     { t: 'HR', r: '#/page/sop-hr', i: 'users' },
@@ -144,10 +154,9 @@ const NAV = [
   ] },
 ];
 
-// A flat top-level link (rendered next to the dropdown groups).
-const NAV_LINKS = [
-  { label: 'Messages', icon: 'chat', r: '#/chat' },
-];
+// A flat top-level link (rendered next to the dropdown groups). Messages lives as an
+// icon in the toolbar, so it is intentionally not duplicated here.
+const NAV_LINKS = [];
 
 // ------------------------------------------------- app shell
 const app = () => document.getElementById('app');
@@ -184,13 +193,12 @@ function renderShell(content) {
         <button class="icon-btn" id="notifBtn" title="Notifications" style="position:relative">${icon('bell')}<span class="notif-badge" id="notifBadge" style="display:none"></span></button>
         <div class="user-dd" id="notifDD" style="min-width:320px;max-height:420px;overflow:auto"></div>
       </div>
-      <a href="#/suggestions" class="icon-btn" title="Suggestion box">${icon('bulb')}</a>
-      <button class="icon-btn" id="howToBtn" title="How to use this portal">${icon('help')}</button>
       <button class="icon-btn" id="themeBtn" title="Toggle theme">${icon(State.theme === 'dark' ? 'sun' : 'moon')}</button>
       <div class="user-menu" id="userMenu">
         <button class="user-btn" id="userBtn">
-          ${avatarHTML(me, 34)}
-          <span><span class="nm">${esc(me.name)}</span><br><span class="rl">${esc(accessLabel(me))} · ${esc(roleLabel(me.role))}</span></span>
+          ${avatarHTML(me, 32)}
+          <span class="user-btn-text"><span class="nm">${esc(me.name)}</span><span class="rl">${esc(accessLabel(me))} · ${esc(roleLabel(me.role))}</span></span>
+          ${icon('chevron', 'icon-sm')}
         </button>
         <div class="user-dd">
           <div class="dd-tier">${icon('shield', 'icon-sm')} Signed in as <strong>${esc(accessLabel(me))}</strong></div>
@@ -198,6 +206,7 @@ function renderShell(content) {
           <a href="#/dashboard">${icon('home')}Dashboard</a>
           <a href="#/profile">${icon('user')}My Profile</a>
           <a href="#/directory">${icon('users')}Team Directory</a>
+          <a href="#/suggestions">${icon('bulb')}Suggestion box</a>
           ${hrLinks}${adminLink}
           <a href="#/password">${icon('key')}Change Password</a>
           <button id="logoutBtn">${icon('logout')}Log out</button>
@@ -209,7 +218,6 @@ function renderShell(content) {
 
   // wiring
   document.getElementById('themeBtn').onclick = toggleTheme;
-  const howTo = document.getElementById('howToBtn'); if (howTo) howTo.onclick = () => startGuide();
   const howToMenu = document.getElementById('howToMenu'); if (howToMenu) howToMenu.onclick = () => startGuide();
   document.getElementById('logoutBtn').onclick = async () => { await api('/logout', { method: 'POST' }); State.me = null; location.hash = '#/login'; };
   const uMenu = document.getElementById('userMenu');
@@ -404,10 +412,10 @@ function greeting() {
 // A small, non-repetitive set of quick links for the home sidebar. The full set
 // of destinations already lives in the top nav — this is just the fast lane.
 const QUICK_LINKS = [
-  { t: 'Tools & Access',  d: 'Apps & logins you use daily', r: '#/page/tools',    i: 'grid',     c: 'chip-indigo' },
-  { t: 'Team Directory',  d: 'Find anyone at Justwords',     r: '#/directory',     i: 'users',    c: 'chip-violet' },
-  { t: 'Apply for Leave', d: 'Request & track time off',     r: '#/leave',         i: 'calendar', c: 'chip-amber'  },
-  { t: 'HR Handbook',     d: 'Policies, schemes & how-tos',  r: '#/page/handbook', i: 'book',     c: 'chip-teal'   },
+  { t: 'Tools & Access',  d: 'Apps & logins you use daily', r: '#/page/tools',       i: 'grid',  c: 'chip-indigo' },
+  { t: 'Team Directory',  d: 'Find anyone at Justwords',     r: '#/directory',        i: 'users', c: 'chip-violet' },
+  { t: 'Reimbursements',  d: 'Submit & track claims',        r: '#/reimbursements',   i: 'file',  c: 'chip-amber'  },
+  { t: 'HR Handbook',     d: 'Policies, schemes & how-tos',  r: '#/page/handbook',    i: 'book',  c: 'chip-teal'   },
 ];
 
 const QUOTES = [
@@ -1374,26 +1382,35 @@ async function renderPerformance(type, params) {
   } catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
 
   const mine = forms.filter(f => f.owner.id === me.id);
-  const team = forms.filter(f => f.owner.id !== me.id).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-  const showTeam = me.is_manager || team.length > 0;
   const windowOpen = type === 'appraisal' ? !!win.appraisal : !!win.kpi;
+  // Team performance lives under the KPI Plan only (not duplicated under Appraisal). The
+  // KPI Team tab shows the whole team's performance across BOTH KPI and appraisal.
+  const canTeam = me.is_manager || isAdminLevel(me);
+  const showTeam = type === 'kpi' && canTeam;
 
-  // which tab
-  let tab = params && params.tab === 'team' ? 'team' : 'self';
-  if (tab === 'team' && !showTeam) tab = 'self';
+  // which tab (team only exists on the KPI page)
+  let tab = params && params.tab === 'team' && showTeam ? 'team' : 'self';
+
+  let teamCombined = [];
+  if (tab === 'team') {
+    const teamKpi = forms.filter(f => f.owner.id !== me.id);
+    let teamAppr = [];
+    try { ({ forms: teamAppr } = await api('/forms?type=appraisal&fy=' + FY)); teamAppr = teamAppr.filter(f => f.owner.id !== me.id); } catch (_) {}
+    teamCombined = teamKpi.concat(teamAppr).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  }
 
   const typeLabel = type === 'kpi' ? 'KPI Incentive Plan' : 'Appraisal';
-  const tabs = `<div class="seg" id="perfTabs">
-      <a class="seg-btn ${tab === 'self' ? 'active' : ''}" href="#/performance/${type}?tab=self">${icon('user', 'icon-sm')}Self</a>
-      ${showTeam ? `<a class="seg-btn ${tab === 'team' ? 'active' : ''}" href="#/performance/${type}?tab=team">${icon('users', 'icon-sm')}Team</a>` : ''}
-    </div>`;
+  const tabs = showTeam ? `<div class="seg" id="perfTabs">
+      <a class="seg-btn ${tab === 'self' ? 'active' : ''}" href="#/performance/kpi?tab=self">${icon('user', 'icon-sm')}Self</a>
+      <a class="seg-btn ${tab === 'team' ? 'active' : ''}" href="#/performance/kpi?tab=team">${icon('users', 'icon-sm')}Team performance</a>
+    </div>` : '';
   const typeSwitch = `<div class="seg seg-soft">
-      <a class="seg-btn ${type === 'kpi' ? 'active' : ''}" href="#/performance/kpi?tab=${tab}">${icon('chart', 'icon-sm')}KPI</a>
-      <a class="seg-btn ${type === 'appraisal' ? 'active' : ''}" href="#/performance/appraisal?tab=${tab}">${icon('target', 'icon-sm')}Appraisal</a>
+      <a class="seg-btn ${type === 'kpi' ? 'active' : ''}" href="#/performance/kpi?tab=self">${icon('chart', 'icon-sm')}KPI</a>
+      <a class="seg-btn ${type === 'appraisal' ? 'active' : ''}" href="#/performance/appraisal">${icon('target', 'icon-sm')}Appraisal</a>
     </div>`;
 
   const body = tab === 'team'
-    ? perfTeamView(team)
+    ? perfTeamView(teamCombined)
     : perfSelfView(type, mine, windowOpen);
 
   setView(`<div class="page">
@@ -1553,36 +1570,194 @@ async function renderPage(slug) {
 // =====================================================================
 //  LEAVE
 // =====================================================================
-async function renderLeave() {
+// =====================================================================
+//  EMPLOYEE REFERRALS  (refer a candidate for an open vacancy)
+// =====================================================================
+const REFERRAL_STATES = { submitted: ['b-draft', 'Submitted'], reviewing: ['b-review', 'Reviewing'], shortlisted: ['b-review', 'Shortlisted'], hired: ['b-approved', 'Hired'], closed: ['b-sentback', 'Closed'] };
+function refBadge(s) { const [c, l] = REFERRAL_STATES[s] || ['b-draft', s]; return `<span class="badge ${c}"><span class="dot"></span>${esc(l)}</span>`; }
+
+async function renderReferrals() {
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
-  const { leaves } = await api('/leave');
   const me = State.me;
-  const canDecide = ['manager', 'director', 'ceo', 'hr', 'hr_admin'].includes(me.role);
-  setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR Desk</div><h1>Leave</h1>
-    <p>Apply for leave and track approvals.</p></div><button class="btn btn-primary" id="applyLeave">${icon('plus', 'icon-sm')}Apply for leave</button></div>
-    <div class="card"><div class="card-head"><span class="card-title">${icon('calendar', 'section-icon')}${canDecide ? 'Team leave requests' : 'My leave requests'}</span></div>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Associate</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th>${canDecide ? '<th></th>' : ''}</tr></thead>
-    <tbody>${leaves.length ? leaves.map(l => `<tr><td>${esc(l.name)}</td><td>${esc(l.type)}</td><td>${esc(l.from_date || '')}</td><td>${esc(l.to_date || '')}</td><td>${l.days}</td><td class="muted">${esc(l.reason || '')}</td>
-      <td><span class="badge ${l.status === 'approved' ? 'b-approved' : l.status === 'rejected' ? 'b-sentback' : 'b-review'}"><span class="dot"></span>${l.status}</span></td>
-      ${canDecide ? `<td>${l.status === 'pending' && l.user_id !== me.id ? `<button class="btn btn-sm btn-success" data-appr="${l.id}">Approve</button> <button class="btn btn-sm btn-danger" data-rej="${l.id}">Reject</button>` : ''}</td>` : ''}</tr>`).join('')
-      : `<tr><td colspan="${canDecide ? 8 : 7}" class="muted" style="padding:18px">No leave requests yet.</td></tr>`}</tbody></table></div></div></div>`);
-  document.getElementById('applyLeave').onclick = () => {
-    modal('Apply for leave', `<div class="field"><label>Type</label><select id="lvType"><option>Casual</option><option>Sick</option><option>Earned</option><option>Work From Home</option></select></div>
-      <div class="grid grid-2"><div class="field"><label>From</label><input type="date" id="lvFrom"></div><div class="field"><label>To</label><input type="date" id="lvTo"></div></div>
-      <div class="field"><label>Days</label><input type="number" id="lvDays" min="0.5" step="0.5" value="1"></div>
-      <div class="field"><label>Reason</label><textarea id="lvReason" rows="3"></textarea></div>`,
-      `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="lvSubmit">Submit</button>`);
-    document.getElementById('lvSubmit').onclick = async () => {
-      try { await api('/leave', { method: 'POST', body: { type: lvType.value, from_date: lvFrom.value, to_date: lvTo.value, days: lvDays.value, reason: lvReason.value } }); closeModal(); toast('Leave applied', 'ok'); renderLeave(); }
+  const isHRv = isAdminLevel(me);
+  let referrals = [], vacancies = [];
+  try { ([{ referrals }, { vacancies }] = await Promise.all([api('/referrals'), api('/vacancies')])); }
+  catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
+  const open = vacancies.filter(v => v.status === 'open');
+
+  const openHTML = open.length ? open.map(v => `<div class="card card-pad">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div><div class="card-title">${esc(v.title)}</div>
+          <div class="muted" style="margin-top:4px">${esc([v.department, v.location, v.type].filter(Boolean).join(' · '))}</div></div>
+        <button class="btn btn-sm btn-primary" data-refer="${v.id}" data-title="${esc(v.title)}">${icon('plus', 'icon-sm')}Refer</button>
+      </div>
+      ${v.description ? `<div class="prose" style="font-size:13px;margin-top:8px">${esc(v.description)}</div>` : ''}
+    </div>`).join('') : `<div class="card"><div class="empty">${icon('brief')}No open vacancies right now. You can still refer for a general role below.</div></div>`;
+
+  const rowsHTML = referrals.length ? referrals.map(r => `<tr>
+      <td><strong>${esc(r.candidate_name)}</strong>${r.candidate_email ? `<div class="muted">${esc(r.candidate_email)}</div>` : ''}</td>
+      <td>${esc(r.vacancy_title || 'General')}</td>
+      ${isHRv ? `<td>${esc(r.referrer || '')}</td>` : ''}
+      <td>${refBadge(r.status)}</td>
+      <td class="muted">${fmtDate(r.created_at)}</td>
+      ${isHRv ? `<td><button class="btn btn-sm" data-manage="${r.id}">Update</button></td>` : ''}
+    </tr>`).join('') : `<tr><td colspan="${isHRv ? 6 : 4}"><div class="empty" style="padding:18px">${icon('users')}No referrals yet.</div></td></tr>`;
+
+  setView(`<div class="page">
+    <div class="page-head"><div><div class="crumb">HR Desk</div><h1>Employee Referrals</h1>
+      <p>Know someone great? Refer them for an open role. HR is notified${isHRv ? '' : ' and will keep you posted'}.</p></div>
+      <button class="btn btn-primary" id="referGeneral">${icon('plus', 'icon-sm')}Refer a candidate</button></div>
+    <div class="sec-head"><h2>${icon('brief', 'section-icon')}Open vacancies</h2><span class="sec-line"></span></div>
+    <div class="grid grid-2">${openHTML}</div>
+    <div class="sec-head"><h2>${icon('users', 'section-icon')}${isHRv ? 'All referrals' : 'My referrals'}</h2><span class="sec-line"></span></div>
+    <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>Candidate</th><th>Role</th>${isHRv ? '<th>Referred by</th>' : ''}<th>Status</th><th>Submitted</th>${isHRv ? '<th></th>' : ''}
+    </tr></thead><tbody>${rowsHTML}</tbody></table></div></div>
+  </div>`);
+
+  const openForm = (vacancyId, title) => {
+    const opts = `<option value="">General / future role</option>` + open.map(v => `<option value="${v.id}" ${String(v.id) === String(vacancyId) ? 'selected' : ''}>${esc(v.title)}</option>`).join('');
+    modal('Refer a candidate', `
+      <div class="field"><label>Vacancy</label><select id="rfVac">${opts}</select></div>
+      <div class="grid grid-2">
+        <div class="field"><label>Candidate name <span style="color:var(--danger)">*</span></label><input id="rfName" placeholder="Full name"></div>
+        <div class="field"><label>How do you know them?</label><input id="rfRel" placeholder="Ex-colleague, friend…"></div>
+        <div class="field"><label>Email</label><input id="rfEmail" type="email" placeholder="name@email.com"></div>
+        <div class="field"><label>Phone</label><input id="rfPhone" placeholder="Optional"></div>
+      </div>
+      <div class="field"><label>Why are they a good fit?</label><textarea id="rfNotes" rows="3" placeholder="A line or two helps HR a lot…"></textarea></div>
+      <div class="field"><label>Résumé (optional)</label><input type="file" id="rfResume"><span class="muted" id="rfResumeName"></span></div>`,
+      `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="rfSave">${icon('send', 'icon-sm')}Submit referral</button>`);
+    let resume = null;
+    document.getElementById('rfResume').onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (!res.ok) throw new Error(j.error);
+        resume = { file: j.filename, name: j.original }; document.getElementById('rfResumeName').textContent = ' ✓ ' + j.original; }
       catch (ex) { toast(ex.message, 'err'); }
     };
+    document.getElementById('rfSave').onclick = async () => {
+      const name = document.getElementById('rfName').value.trim();
+      if (!name) { toast("Enter the candidate's name", 'err'); return; }
+      try {
+        await api('/referrals', { method: 'POST', body: {
+          vacancy_id: document.getElementById('rfVac').value || null, candidate_name: name,
+          candidate_email: document.getElementById('rfEmail').value, candidate_phone: document.getElementById('rfPhone').value,
+          relationship: document.getElementById('rfRel').value, notes: document.getElementById('rfNotes').value,
+          resume_file: resume ? resume.file : null, resume_name: resume ? resume.name : null } });
+        closeModal(); toast('Referral submitted — thank you!', 'ok'); renderReferrals();
+      } catch (ex) { toast(ex.message, 'err'); }
+    };
   };
-  view().querySelectorAll('[data-appr]').forEach(b => b.onclick = () => decideLeave(b.dataset.appr, 'approved'));
-  view().querySelectorAll('[data-rej]').forEach(b => b.onclick = () => decideLeave(b.dataset.rej, 'rejected'));
+  document.getElementById('referGeneral').onclick = () => openForm('', '');
+  view().querySelectorAll('[data-refer]').forEach(b => b.onclick = () => openForm(b.dataset.refer, b.dataset.title));
+
+  if (isHRv) {
+    const byId = {}; referrals.forEach(r => byId[r.id] = r);
+    view().querySelectorAll('[data-manage]').forEach(b => b.onclick = () => {
+      const r = byId[b.dataset.manage];
+      modal('Update referral — ' + esc(r.candidate_name), `
+        <div class="field"><label>Status</label><select id="rfStatus">
+          ${Object.keys(REFERRAL_STATES).map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${REFERRAL_STATES[s][1]}</option>`).join('')}</select></div>
+        <div class="field"><label>Note (optional)</label><textarea id="rfHrNote" rows="3">${esc(r.hr_note || '')}</textarea></div>
+        ${r.resume_file ? `<a class="btn btn-sm" href="/uploads/${esc(r.resume_file)}" target="_blank">${icon('file', 'icon-sm')}View résumé</a>` : '<span class="muted">No résumé attached.</span>'}`,
+        `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="rfUpd">Save</button>`);
+      document.getElementById('rfUpd').onclick = async () => {
+        try { await api('/referrals/' + r.id, { method: 'POST', body: { status: document.getElementById('rfStatus').value, hr_note: document.getElementById('rfHrNote').value } });
+          closeModal(); toast('Referral updated', 'ok'); renderReferrals(); }
+        catch (ex) { toast(ex.message, 'err'); }
+      };
+    });
+  }
 }
-async function decideLeave(id, status) {
-  try { await api('/leave/' + id, { method: 'POST', body: { status } }); toast('Leave ' + status, 'ok'); renderLeave(); }
-  catch (ex) { toast(ex.message, 'err'); }
+
+// =====================================================================
+//  REIMBURSEMENTS  (claim → manager approval → HR)
+// =====================================================================
+const REIMB_STATES = { pending: ['b-review', 'Pending approval'], approved: ['b-approved', 'Approved'], rejected: ['b-sentback', 'Rejected'], reimbursed: ['b-approved', 'Reimbursed'] };
+function reimbBadge(s) { const [c, l] = REIMB_STATES[s] || ['b-draft', s]; return `<span class="badge ${c}"><span class="dot"></span>${esc(l)}</span>`; }
+
+async function renderReimbursements() {
+  renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
+  const me = State.me;
+  const canDecideAny = isAdminLevel(me) || canSeeTeam(me);
+  let items = [];
+  try { ({ reimbursements: items } = await api('/reimbursements')); }
+  catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
+  const mine = items.filter(r => r.user_id === me.id);
+  const toDecide = items.filter(r => r.user_id !== me.id && r.status === 'pending' && (r.manager_id === me.id || isAdminLevel(me)));
+  const others = items.filter(r => r.user_id !== me.id && !toDecide.includes(r));
+
+  const row = (r, withOwner, withActions) => `<tr>
+    ${withOwner ? `<td><strong>${esc(r.name)}</strong></td>` : ''}
+    <td>${esc(r.title)}<div class="muted">${esc(r.category || '')}${r.spent_on ? ' · ' + esc(r.spent_on) : ''}</div></td>
+    <td class="asset-tag"><strong>${esc(r.currency || 'INR')} ${esc(r.amount)}</strong></td>
+    <td>${reimbBadge(r.status)}</td>
+    <td class="muted">${r.receipt_file ? `<a href="/uploads/${esc(r.receipt_file)}" target="_blank">${icon('file', 'icon-sm')}Receipt</a>` : '—'}</td>
+    <td class="muted">${fmtDate(r.created_at)}</td>
+    ${withActions ? `<td style="white-space:nowrap">${r.status === 'pending' && r.user_id !== me.id
+      ? `<button class="btn btn-sm btn-success" data-appr="${r.id}">Approve</button> <button class="btn btn-sm btn-danger" data-rej="${r.id}">Reject</button>`
+      : (isAdminLevel(me) && r.status === 'approved' ? `<button class="btn btn-sm" data-reimb="${r.id}">Mark reimbursed</button>` : '')}</td>` : ''}
+  </tr>`;
+
+  const section = (title, list, withOwner, withActions, emptyMsg) => `
+    <div class="sec-head"><h2>${icon(withActions ? 'inbox' : 'file', 'section-icon')}${title}</h2>${list.length ? `<span class="badge b-review"><span class="dot"></span>${list.length}</span>` : '<span class="sec-line"></span>'}</div>
+    <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
+      ${withOwner ? '<th>Who</th>' : ''}<th>Claim</th><th>Amount</th><th>Status</th><th>Receipt</th><th>Submitted</th>${withActions ? '<th></th>' : ''}
+    </tr></thead><tbody>${list.length ? list.map(r => row(r, withOwner, withActions)).join('') : `<tr><td colspan="8"><div class="empty" style="padding:16px">${esc(emptyMsg)}</div></td></tr>`}</tbody></table></div></div>`;
+
+  setView(`<div class="page">
+    <div class="page-head"><div><div class="crumb">HR Desk</div><h1>Reimbursements</h1>
+      <p>Submit an expense claim. It goes to your reporting manager for approval, with HR kept in the loop.</p></div>
+      <button class="btn btn-primary" id="newReimb">${icon('plus', 'icon-sm')}New claim</button></div>
+    ${canDecideAny ? section('Awaiting your approval', toDecide, true, true, 'Nothing awaiting your approval.') : ''}
+    ${section('My claims', mine, false, false, 'No claims yet — submit your first one.')}
+    ${canDecideAny && others.length ? section('Team claims', others, true, true, '') : ''}
+  </div>`);
+
+  document.getElementById('newReimb').onclick = () => {
+    modal('New reimbursement claim', `
+      <div class="grid grid-2">
+        <div class="field"><label>Title <span style="color:var(--danger)">*</span></label><input id="rbTitle" placeholder="e.g. Client lunch"></div>
+        <div class="field"><label>Category</label><select id="rbCat"><option>Travel</option><option>Meals</option><option>Software / Tools</option><option>Office supplies</option><option>Training</option><option>General</option></select></div>
+        <div class="field"><label>Amount <span style="color:var(--danger)">*</span></label><input id="rbAmt" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="field"><label>Currency</label><select id="rbCur"><option>INR</option><option>USD</option><option>GBP</option><option>EUR</option></select></div>
+        <div class="field"><label>Spent on</label><input id="rbDate" type="date"></div>
+      </div>
+      <div class="field"><label>Description</label><textarea id="rbDesc" rows="3" placeholder="What was this for?"></textarea></div>
+      <div class="field"><label>Receipt (optional)</label><input type="file" id="rbReceipt"><span class="muted" id="rbReceiptName"></span></div>`,
+      `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="rbSave">${icon('send', 'icon-sm')}Submit claim</button>`);
+    let receipt = null;
+    document.getElementById('rbReceipt').onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const fd = new FormData(); fd.append('file', file);
+      try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (!res.ok) throw new Error(j.error);
+        receipt = { file: j.filename, name: j.original }; document.getElementById('rbReceiptName').textContent = ' ✓ ' + j.original; }
+      catch (ex) { toast(ex.message, 'err'); }
+    };
+    document.getElementById('rbSave').onclick = async () => {
+      const title = document.getElementById('rbTitle').value.trim();
+      const amount = document.getElementById('rbAmt').value;
+      if (!title) { toast('Add a short title', 'err'); return; }
+      if (!amount || Number(amount) <= 0) { toast('Enter a valid amount', 'err'); return; }
+      try {
+        await api('/reimbursements', { method: 'POST', body: {
+          title, amount, category: document.getElementById('rbCat').value, currency: document.getElementById('rbCur').value,
+          spent_on: document.getElementById('rbDate').value, description: document.getElementById('rbDesc').value,
+          receipt_file: receipt ? receipt.file : null, receipt_name: receipt ? receipt.name : null } });
+        closeModal(); toast('Claim submitted for approval', 'ok'); renderReimbursements();
+      } catch (ex) { toast(ex.message, 'err'); }
+    };
+  };
+  const decide = async (id, status) => {
+    let note = '';
+    if (status === 'rejected') { note = prompt('Reason for rejection (optional):') || ''; }
+    try { await api('/reimbursements/' + id + '/decide', { method: 'POST', body: { status, note } }); toast('Claim ' + status, 'ok'); renderReimbursements(); }
+    catch (ex) { toast(ex.message, 'err'); }
+  };
+  view().querySelectorAll('[data-appr]').forEach(b => b.onclick = () => decide(b.dataset.appr, 'approved'));
+  view().querySelectorAll('[data-rej]').forEach(b => b.onclick = () => decide(b.dataset.rej, 'rejected'));
+  view().querySelectorAll('[data-reimb]').forEach(b => b.onclick = () => decide(b.dataset.reimb, 'reimbursed'));
 }
 
 // =====================================================================
@@ -1619,40 +1794,87 @@ async function renderVacancies() {
 // =====================================================================
 //  SUGGESTION BOX  +  HR INBOX
 // =====================================================================
+const SUGGESTION_CATS = ['General', 'Workplace', 'Process / Tools', 'Culture', 'Facilities', 'Grievance'];
+const SG_CAT_ICON = { General: 'bulb', Workplace: 'building', 'Process / Tools': 'settings', Culture: 'smile', Facilities: 'box', Grievance: 'shield' };
+
 function renderSuggestions() {
-  renderShell(`<div class="page" style="max-width:640px">
-    <div class="page-head"><div><div class="crumb">Voice</div><h1>Suggestion box</h1>
-    <p>Share ideas, concerns or feedback. It goes straight to HR — optionally anonymous.</p></div></div>
-    <div class="card card-pad"><form id="sgForm">
-      <div class="field"><label>Category</label><select id="sgCat"><option>General</option><option>Workplace</option><option>Process / Tools</option><option>Culture</option><option>Facilities</option><option>Grievance</option></select></div>
-      <div class="field"><label>Subject</label><input id="sgSubj" placeholder="Short title"></div>
-      <div class="field"><label>Your message</label><textarea id="sgMsg" rows="5" placeholder="Tell HR what's on your mind…" required></textarea></div>
-      <label class="check"><input type="checkbox" id="sgAnon"> Submit anonymously (your name will not be shared with HR)</label>
-      <div style="margin-top:16px"><button class="btn btn-primary" type="submit">${icon('send', 'icon-sm')}Send to HR</button></div>
+  renderShell(`<div class="page" style="max-width:680px">
+    <div class="page-head"><div><div class="crumb">Your voice</div><h1>Suggestion box</h1>
+    <p>Share an idea, a concern or honest feedback — anonymously if you choose.</p></div></div>
+    <div class="card card-pad" id="sgCard"><form id="sgForm">
+      <div class="field"><label>What is this about?</label>
+        <div class="sg-cats" id="sgCats">${SUGGESTION_CATS.map((c, i) => `<label class="sg-cat"><input type="radio" name="sgCat" value="${esc(c)}" ${i === 0 ? 'checked' : ''}>${icon(SG_CAT_ICON[c] || 'bulb', 'icon-sm')}<span>${esc(c)}</span></label>`).join('')}</div>
+      </div>
+      <div class="field"><label>Subject</label><input id="sgSubj" placeholder="A short headline" maxlength="120"></div>
+      <div class="field"><label>Your message <span style="color:var(--danger)">*</span></label><textarea id="sgMsg" rows="5" placeholder="What's on your mind — the more specific, the better." required></textarea></div>
+      <label class="check sg-anon"><input type="checkbox" id="sgAnon"> <span><strong>Submit anonymously</strong><br><span class="muted">Your name won't be attached — it will show as “Anonymous”.</span></span></label>
+      <div style="margin-top:18px"><button class="btn btn-primary" type="submit">${icon('send', 'icon-sm')}Send suggestion</button></div>
     </form></div></div>`);
   document.getElementById('sgForm').onsubmit = async e => {
     e.preventDefault();
-    try { await api('/suggestions', { method: 'POST', body: { category: sgCat.value, subject: sgSubj.value, message: sgMsg.value, anonymous: sgAnon.checked } });
-      toast('Thank you — your suggestion was sent to HR', 'ok'); sgForm.reset(); }
-    catch (ex) { toast(ex.message, 'err'); }
+    const cat = (document.querySelector('input[name="sgCat"]:checked') || {}).value || 'General';
+    const msg = document.getElementById('sgMsg').value.trim();
+    if (!msg) { toast('Please write your message', 'err'); return; }
+    try {
+      await api('/suggestions', { method: 'POST', body: { category: cat, subject: document.getElementById('sgSubj').value, message: msg, anonymous: document.getElementById('sgAnon').checked } });
+      document.getElementById('sgCard').innerHTML = `<div class="empty" style="padding:40px 16px">${icon('check')}
+        <h3 style="margin:10px 0 4px">Thank you — your suggestion has been submitted.</h3>
+        <p class="muted">Every submission is read and taken seriously.</p>
+        <button class="btn" id="sgAgain" style="margin-top:14px">${icon('plus', 'icon-sm')}Submit another</button></div>`;
+      document.getElementById('sgAgain').onclick = renderSuggestions;
+    } catch (ex) { toast(ex.message, 'err'); }
   };
 }
+
+let SG_FILTER = 'all';
 async function renderHRSuggestions() {
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
   const { suggestions } = await api('/suggestions');
-  setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR</div><h1>Suggestion inbox</h1>
-    <p>${suggestions.length} submissions from associates</p></div></div>
-    ${suggestions.length ? `<div class="grid grid-2">${suggestions.map(s => `<div class="card card-pad">
-      <div style="display:flex;justify-content:space-between"><span class="badge b-open"><span class="dot"></span>${esc(s.category)}</span>
-      <span class="badge ${s.status === 'closed' ? 'b-approved' : s.status === 'reviewing' ? 'b-review' : 'b-draft'}"><span class="dot"></span>${s.status}</span></div>
+  const counts = { all: suggestions.length, open: 0, reviewing: 0, closed: 0 };
+  suggestions.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
+  const list = suggestions.filter(s => SG_FILTER === 'all' || s.status === SG_FILTER);
+  const seg = (k, label) => `<button class="seg-btn ${SG_FILTER === k ? 'active' : ''}" data-filter="${k}">${label} <span class="seg-count">${counts[k] || 0}</span></button>`;
+
+  const card = (s) => `<div class="card card-pad sg-inbox-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span class="badge b-open"><span class="dot"></span>${icon(SG_CAT_ICON[s.category] || 'bulb', 'icon-sm')} ${esc(s.category)}</span>
+        <span class="badge ${s.status === 'closed' ? 'b-approved' : s.status === 'reviewing' ? 'b-review' : 'b-draft'}"><span class="dot"></span>${esc(s.status)}</span></div>
       <div class="card-title" style="margin:10px 0 4px">${esc(s.subject || '(no subject)')}</div>
-      <div class="prose" style="font-size:13.5px">${esc(s.message)}</div>
+      <div class="prose" style="font-size:13.5px;white-space:pre-wrap">${esc(s.message)}</div>
       <div class="muted" style="margin-top:10px">— ${esc(s.author || 'Anonymous')} · ${fmtDate(s.created_at)}</div>
-      <div class="toolbar" style="margin-top:12px"><button class="btn btn-sm" data-rev="${s.id}">Mark reviewing</button><button class="btn btn-sm btn-success" data-cls="${s.id}">Close</button></div>
-    </div>`).join('')}</div>` : `<div class="card"><div class="empty">${icon('bulb')}No suggestions yet.</div></div>`}
+      ${s.hr_note ? `<div class="mc-item" style="margin-top:10px"><span class="mc-avatar">${icon('pen', 'icon-sm')}</span><div><div class="mc-by">HR note</div><div class="mc-text">${esc(s.hr_note)}</div></div></div>` : ''}
+      <div class="toolbar" style="margin-top:12px">
+        ${s.status !== 'reviewing' ? `<button class="btn btn-sm" data-rev="${s.id}">${icon('clock', 'icon-sm')}Reviewing</button>` : ''}
+        <button class="btn btn-sm" data-note="${s.id}">${icon('pen', 'icon-sm')}${s.hr_note ? 'Edit note' : 'Add note'}</button>
+        ${s.status !== 'closed' ? `<button class="btn btn-sm btn-success" data-cls="${s.id}">${icon('check', 'icon-sm')}Close</button>` : `<button class="btn btn-sm" data-reopen="${s.id}">Reopen</button>`}
+      </div></div>`;
+
+  setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR</div><h1>Suggestion inbox</h1>
+    <p>${suggestions.length} submission${suggestions.length === 1 ? '' : 's'} from associates</p></div></div>
+    <div class="seg" id="sgFilters" style="margin-bottom:18px">${seg('all', 'All')}${seg('open', 'Open')}${seg('reviewing', 'Reviewing')}${seg('closed', 'Closed')}</div>
+    ${list.length ? `<div class="grid grid-2">${list.map(card).join('')}</div>` : `<div class="card"><div class="empty">${icon('bulb')}Nothing here under this filter.</div></div>`}
   </div>`);
-  view().querySelectorAll('[data-rev]').forEach(b => b.onclick = async () => { await api('/suggestions/' + b.dataset.rev, { method: 'POST', body: { status: 'reviewing' } }); renderHRSuggestions(); });
-  view().querySelectorAll('[data-cls]').forEach(b => b.onclick = async () => { await api('/suggestions/' + b.dataset.cls, { method: 'POST', body: { status: 'closed' } }); renderHRSuggestions(); });
+
+  const byId = {}; suggestions.forEach(s => byId[s.id] = s);
+  const setStatus = async (id, status, hr_note) => {
+    const s = byId[id];
+    await api('/suggestions/' + id, { method: 'POST', body: { status, hr_note: hr_note != null ? hr_note : (s.hr_note || '') } });
+    renderHRSuggestions();
+  };
+  view().querySelectorAll('[data-filter]').forEach(b => b.onclick = () => { SG_FILTER = b.dataset.filter; renderHRSuggestions(); });
+  view().querySelectorAll('[data-rev]').forEach(b => b.onclick = () => setStatus(b.dataset.rev, 'reviewing'));
+  view().querySelectorAll('[data-cls]').forEach(b => b.onclick = () => setStatus(b.dataset.cls, 'closed'));
+  view().querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => setStatus(b.dataset.reopen, 'open'));
+  view().querySelectorAll('[data-note]').forEach(b => b.onclick = () => {
+    const s = byId[b.dataset.note];
+    modal('HR note — ' + esc(s.subject || s.category), `<div class="field"><label>Internal note (visible to HR &amp; leadership)</label>
+      <textarea id="sgNote" rows="4">${esc(s.hr_note || '')}</textarea></div>`,
+      `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="sgNoteSave">Save note</button>`);
+    document.getElementById('sgNoteSave').onclick = async () => {
+      await setStatus(s.id, s.status === 'open' ? 'reviewing' : s.status, document.getElementById('sgNote').value);
+      closeModal();
+    };
+  });
 }
 
 // =====================================================================
@@ -1673,8 +1895,8 @@ async function renderAdmin() {
     <div class="grid grid-4" style="margin-top:18px">
       ${stat('KPI forms', totals.kpi_forms)}
       ${stat('In review', totals.in_review)}
-      ${stat('Approved', totals.approved)}
-      ${stat('Pending leaves', totals.pending_leaves)}
+      ${stat('Open referrals', totals.open_referrals)}
+      ${stat('Pending reimbursements', totals.pending_reimb)}
     </div>
     <div class="grid grid-2" style="margin-top:18px">
       <div class="card"><div class="card-head"><span class="card-title">${icon('users', 'section-icon')}Headcount by department</span></div>
@@ -1686,7 +1908,7 @@ async function renderAdmin() {
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Who</th><th>Action</th><th>Form</th><th>When</th></tr></thead>
       <tbody>${recent.length ? recent.map(r => `<tr><td>${esc(r.actor)}</td><td>${actionLabel(r.action)}</td><td>${r.type.toUpperCase()} · ${r.quarter}</td><td class="muted">${fmtDate(r.at)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted" style="padding:16px">No activity yet.</td></tr>'}</tbody></table></div></div>
     <div class="card card-pad" style="margin-top:18px"><div class="card-title" style="margin-bottom:8px">${icon('info', 'section-icon')}HR Admin capabilities</div>
-      <p class="muted">As HR Admin you can edit About Us / HR Desk / SOP content pages, manage vacancies, review the full suggestion inbox, decide leave for anyone, and view every associate's KPI and appraisal forms across the org.</p></div>
+      <p class="muted">As HR Admin you can edit About Us / HR Desk / SOP content pages, manage vacancies & referrals, approve reimbursements, review the full suggestion inbox, and view every associate's KPI and appraisal forms across the org.</p></div>
   </div>`);
 }
 function barRow(label, val, max) {
@@ -1740,7 +1962,9 @@ function fmtDayTime(s) { if (!s) return ''; const d = new Date(s.replace ? s.rep
 
 function chatSideItem(c, active) {
   const cls = 'chat-chan' + (active ? ' active' : '') + (c.unread ? ' has-unread' : '');
-  const glyph = c.is_dm ? avatarHTML(c.other, 26) : `<span class="chan-hash">${icon('hash', 'icon-sm')}</span>`;
+  const glyph = c.is_dm ? avatarHTML(c.other, 26)
+    : c.is_group ? `<span class="chan-hash">${icon('users', 'icon-sm')}</span>`
+    : `<span class="chan-hash">${icon('hash', 'icon-sm')}</span>`;
   return `<a class="${cls}" href="#/chat/${c.id}" data-chan="${c.id}">
     ${glyph}<span class="chan-name">${esc(c.name)}</span>
     ${c.unread ? `<span class="chan-unread">${c.unread > 9 ? '9+' : c.unread}</span>` : ''}</a>`;
@@ -1753,19 +1977,22 @@ async function renderChat(channelId) {
   try { ov = await api('/chat/overview'); } catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
   const cid = channelId ? Number(channelId) : (ov.channels[0] ? ov.channels[0].id : (ov.dms[0] ? ov.dms[0].id : null));
 
+  const groups = ov.groups || [];
   const sideHTML = `
     <div class="chat-side">
       <div class="chat-side-head">
         <span>${icon('chat', 'section-icon')}Messages</span>
       </div>
-      <div class="chat-group-head">Channels <button class="chat-add" id="newChan" title="Create channel">${icon('plus', 'icon-sm')}</button></div>
-      <div class="chat-list">${ov.channels.length ? ov.channels.map(c => chatSideItem(c, c.id === cid)).join('') : '<div class="muted" style="padding:6px 14px">No channels yet</div>'}</div>
+      <div class="chat-group-head">Channels</div>
+      <div class="chat-list">${ov.channels.length ? ov.channels.map(c => chatSideItem(c, c.id === cid)).join('') : '<div class="muted" style="padding:6px 14px">No channels</div>'}</div>
+      <div class="chat-group-head">Group chats <button class="chat-add" id="newGroup" title="Create a group chat">${icon('plus', 'icon-sm')}</button></div>
+      <div class="chat-list">${groups.length ? groups.map(c => chatSideItem(c, c.id === cid)).join('') : '<div class="muted" style="padding:6px 14px">No groups yet</div>'}</div>
       <div class="chat-group-head">Direct messages <button class="chat-add" id="newDM" title="Start a direct message">${icon('plus', 'icon-sm')}</button></div>
       <div class="chat-list">${ov.dms.length ? ov.dms.map(c => chatSideItem(c, c.id === cid)).join('') : '<div class="muted" style="padding:6px 14px">No conversations yet</div>'}</div>
     </div>`;
 
   setView(`<div class="chat-wrap">${sideHTML}<div class="chat-main" id="chatMain"></div></div>`);
-  document.getElementById('newChan').onclick = newChannelModal;
+  document.getElementById('newGroup').onclick = newGroupModal;
   document.getElementById('newDM').onclick = newDMModal;
 
   if (cid) openChannel(cid);
@@ -1793,7 +2020,9 @@ async function openChannel(id) {
 
   const title = ch.is_dm
     ? `${avatarHTML(ch.other, 30)}<span>${esc(ch.name)}</span><span class="muted" style="font-weight:500">${esc(ch.topic || '')}</span>`
-    : `<span class="chan-hash big">${icon('hash', 'icon-sm')}</span><span>${esc(ch.name)}</span><span class="muted" style="font-weight:500">${esc(ch.topic || '')}</span>`;
+    : ch.is_group
+      ? `<span class="chan-hash big">${icon('users', 'icon-sm')}</span><span>${esc(ch.name)}</span><span class="muted" style="font-weight:500">${ch.member_count || 0} member${ch.member_count === 1 ? '' : 's'}${ch.topic ? ' · ' + esc(ch.topic) : ''}</span>`
+      : `<span class="chan-hash big">${icon('hash', 'icon-sm')}</span><span>${esc(ch.name)}</span><span class="muted" style="font-weight:500">${esc(ch.topic || '')}</span>`;
 
   main.innerHTML = `
     <div class="chat-head">${title}</div>
@@ -1848,15 +2077,43 @@ async function pollMessages(forceScroll) {
   }
 }
 
-function newChannelModal() {
-  modal('Create a channel', `<div class="field"><label>Channel name</label><input id="chName" placeholder="e.g. content-team" maxlength="40"></div>
-    <div class="field"><label>Topic (optional)</label><input id="chTopic" placeholder="What's this channel about?"></div>
-    <p class="muted">Channels are visible to everyone at Justwords. Names are lowercased and hyphenated.</p>`,
-    `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="chCreate">Create</button>`);
-  document.getElementById('chCreate').onclick = async () => {
-    const name = document.getElementById('chName').value.trim();
-    if (!name) { toast('Enter a channel name', 'err'); return; }
-    try { const { id } = await api('/chat/channels', { method: 'POST', body: { name, topic: document.getElementById('chTopic').value } }); closeModal(); location.hash = '#/chat/' + id; }
+async function newGroupModal() {
+  modal('New group chat', `
+    <div class="field"><label>Group name</label><input id="grName" placeholder="e.g. Content Pod" maxlength="60"></div>
+    <div class="field"><label>Add people</label><input id="grSearch" placeholder="Search teammates…" autocomplete="off"></div>
+    <div id="grSelected" class="gr-selected"></div>
+    <div id="grList" class="dm-picker"><div class="muted" style="padding:10px">Loading…</div></div>
+    <p class="muted">A group chat is private to the people you add. You're included automatically.</p>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="grCreate">${icon('users', 'icon-sm')}Create group</button>`);
+  const { users } = await api('/directory');
+  const others = users.filter(u => u.id !== State.me.id);
+  const picked = new Map();
+  const renderPicked = () => {
+    document.getElementById('grSelected').innerHTML = picked.size
+      ? [...picked.values()].map(u => `<span class="gr-chip">${esc(u.name.split(' ')[0])}<button data-unpick="${u.id}" aria-label="Remove">${icon('x', 'icon-sm')}</button></span>`).join('')
+      : '<span class="muted" style="font-size:12px">No one added yet.</span>';
+    document.querySelectorAll('[data-unpick]').forEach(b => b.onclick = () => { picked.delete(Number(b.dataset.unpick)); renderPicked(); paint(filterList()); });
+  };
+  const filterList = () => {
+    const q = (document.getElementById('grSearch').value || '').toLowerCase();
+    return others.filter(u => !picked.has(u.id) && (u.name + ' ' + (u.designation || '') + ' ' + (u.department || '')).toLowerCase().includes(q));
+  };
+  const paint = (list) => {
+    document.getElementById('grList').innerHTML = list.length ? list.map(u => `<button class="dm-pick" data-uid="${u.id}">
+      ${avatarHTML(u, 32)}<span><span class="dm-nm">${esc(u.name)}</span><span class="dm-rl">${esc(u.designation || '')}</span></span></button>`).join('')
+      : `<div class="muted" style="padding:10px">No matches</div>`;
+    document.querySelectorAll('#grList .dm-pick').forEach(b => b.onclick = () => {
+      const u = others.find(x => x.id === Number(b.dataset.uid)); if (u) picked.set(u.id, u);
+      renderPicked(); paint(filterList());
+    });
+  };
+  renderPicked(); paint(others);
+  document.getElementById('grSearch').oninput = () => paint(filterList());
+  document.getElementById('grCreate').onclick = async () => {
+    const name = document.getElementById('grName').value.trim();
+    if (!name) { toast('Give the group a name', 'err'); return; }
+    if (!picked.size) { toast('Add at least one person', 'err'); return; }
+    try { const { id } = await api('/chat/groups', { method: 'POST', body: { name, member_ids: [...picked.keys()] } }); closeModal(); location.hash = '#/chat/' + id; }
     catch (ex) { toast(ex.message, 'err'); }
   };
 }
@@ -1962,31 +2219,80 @@ async function renderFormWindows() {
 //  ASSET TRACKING TOOL  (register + audit)
 // =====================================================================
 function canEditAssets(me) { return !!me && ['hr', 'hr_admin', 'director', 'ceo'].includes(me.role); }
-const OWN_LABEL = { rent: 'Rent', acquisition: 'Acquisition' };
+const OWN_LABEL = { rent: 'Rental', acquisition: 'Acquisition' };
+const ASSET_CATS = {
+  electronic: ['Laptop', 'Desktop', 'CPU', 'UPS', 'Mouse', 'Keyboard', 'Monitor', 'Hard Drive', 'SSD', 'Projector', 'TV', 'Wifi Router', 'Access Points - Leaseline', 'Biometric Machine', 'Telephones', 'Headphones', 'Camera'],
+  physical: ['Storage', 'Chairs', 'Fan', 'Boards', 'Table', 'Projector Screen', 'Keys', 'Phone Sims', 'Tripod'],
+};
 
+// The asset modal is re-rendered on class / ownership change so the right fields show.
 function assetFormBody(a = {}) {
-  return `
-    <div class="asset-grid">
-      <div class="field"><label>Category of asset</label><input id="as_category" value="${esc(a.category || '')}" placeholder="Laptop, Monitor, Phone…"></div>
-      <div class="field"><label>Asset specification</label><input id="as_specification" value="${esc(a.specification || '')}" placeholder="e.g. Dell i5 / 16GB / 512GB"></div>
-      <div class="field"><label>Asset identity no.</label><input id="as_identity_no" value="${esc(a.identity_no || '')}" placeholder="Serial / IMEI"></div>
-      <div class="field"><label>Asset owned by</label><input id="as_owned_by" value="${esc(a.owned_by || '')}" placeholder="Justwords / vendor"></div>
-      <div class="field"><label>JW asset no.</label><input id="as_jw_asset_no" value="${esc(a.jw_asset_no || '')}" placeholder="JW-0001"></div>
-      <div class="field"><label>Rent / Acquisition</label><select id="as_ownership">
-        <option value="acquisition" ${a.ownership === 'rent' ? '' : 'selected'}>Acquisition</option>
-        <option value="rent" ${a.ownership === 'rent' ? 'selected' : ''}>Rent</option></select></div>
-      <div class="field"><label>Issued to</label><input id="as_issued_to" value="${esc(a.issued_to || '')}" placeholder="Associate / team"></div>
-      <div class="field"><label>Issued on</label><input type="date" id="as_issued_on" value="${esc(a.issued_on || '')}"></div>
-      <div class="field"><label>Asset audit date</label><input type="date" id="as_audit_date" value="${esc(a.audit_date || '')}"></div>
-      <div class="field" style="grid-column:1/-1"><label>Notes</label><textarea id="as_notes" rows="2">${esc(a.notes || '')}</textarea></div>
+  const cls = a.asset_class === 'physical' ? 'physical' : 'electronic';
+  const rent = a.ownership === 'rent';
+  const catOpts = `<option value="">Select…</option>` + ASSET_CATS[cls].map(c => `<option ${a.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')
+    + (a.category && !ASSET_CATS[cls].includes(a.category) ? `<option selected>${esc(a.category)}</option>` : '');
+  const classSeg = `<div class="seg seg-soft" id="as_classSeg">
+      <button type="button" class="seg-btn ${cls === 'electronic' ? 'active' : ''}" data-aclass="electronic">${icon('settings', 'icon-sm')}Electronic</button>
+      <button type="button" class="seg-btn ${cls === 'physical' ? 'active' : ''}" data-aclass="physical">${icon('box', 'icon-sm')}Physical</button>
     </div>`;
+
+  const electronicFields = `
+      <div class="field"><label>Brand</label><input id="as_brand" value="${esc(a.brand || '')}" placeholder="Dell, HP, Apple…"></div>
+      <div class="field"><label>Configuration</label><input id="as_configuration" value="${esc(a.configuration || '')}" placeholder="i5 / 16GB / 512GB SSD"></div>
+      <div class="field"><label>Service Tag no.</label><input id="as_service_tag" value="${esc(a.service_tag || '')}" placeholder="Serial / service tag"></div>
+      <div class="field"><label>Laptop Agreement</label><input id="as_laptop_agreement" value="${esc(a.laptop_agreement || '')}" placeholder="Signed / N/A"></div>
+      <div class="field"><label>Issued to</label><input id="as_issued_to" value="${esc(a.issued_to || '')}" placeholder="Associate / team"></div>
+      <div class="field"><label>Date of Issuance</label><input type="date" id="as_issued_on" value="${esc(a.issued_on || '')}"></div>
+      <div class="field"><label>Rental / Acquisition</label><select id="as_ownership">
+        <option value="acquisition" ${rent ? '' : 'selected'}>Acquisition</option>
+        <option value="rent" ${rent ? 'selected' : ''}>Rental</option></select></div>
+      <div class="field" id="as_ownNumWrap">${rent
+        ? `<label>Vendor's Name</label><input id="as_vendor_name" value="${esc(a.vendor_name || '')}" placeholder="Rental vendor">`
+        : `<label>JW Asset No.</label><input id="as_jw_asset_no" value="${esc(a.jw_asset_no || '')}" placeholder="JW-0001">`}</div>
+      <div class="field"><label>Date of Return</label><input type="date" id="as_date_of_return" value="${esc(a.date_of_return || '')}"></div>
+      <div class="field" style="grid-column:1/-1"><label>Any comments</label><textarea id="as_notes" rows="2">${esc(a.notes || '')}</textarea></div>`;
+
+  const physicalFields = `
+      <div class="field"><label>Brand / make <span class="muted">(optional)</span></label><input id="as_brand" value="${esc(a.brand || '')}" placeholder="Optional"></div>
+      <div class="field"><label>Specification <span class="muted">(optional)</span></label><input id="as_configuration" value="${esc(a.configuration || '')}" placeholder="Size, colour, model…"></div>
+      <div class="field"><label>Issued to / location</label><input id="as_issued_to" value="${esc(a.issued_to || '')}" placeholder="Associate / room"></div>
+      <div class="field"><label>Date of Issuance</label><input type="date" id="as_issued_on" value="${esc(a.issued_on || '')}"></div>
+      <div class="field" style="grid-column:1/-1"><label>Any comments</label><textarea id="as_notes" rows="2">${esc(a.notes || '')}</textarea></div>`;
+
+  return `
+    <input type="hidden" id="as_asset_class" value="${cls}">
+    <div class="field"><label>Asset type</label>${classSeg}</div>
+    <div class="asset-grid">
+      <div class="field"><label>Category</label><select id="as_category">${catOpts}</select></div>
+      ${cls === 'electronic' ? electronicFields : physicalFields}
+    </div>`;
+}
+// Re-render the modal body in place when the class or ownership changes, preserving
+// whatever the user has typed so far.
+function wireAssetForm() {
+  const reopen = (patch) => {
+    const a = Object.assign(readAssetForm(), patch);
+    const body = document.querySelector('.modal-body'); if (!body) return;
+    body.innerHTML = assetFormBody(a);
+    wireAssetForm();
+  };
+  document.querySelectorAll('[data-aclass]').forEach(b => b.onclick = () => {
+    const next = b.dataset.aclass;
+    const cur = readAssetForm();
+    // dropping into the other class clears the category if it doesn't belong there
+    if (!ASSET_CATS[next].includes(cur.category)) cur.category = '';
+    reopen({ asset_class: next, category: cur.category });
+  });
+  const own = document.getElementById('as_ownership');
+  if (own) own.onchange = () => reopen({ ownership: own.value });
 }
 function readAssetForm() {
   const g = id => (document.getElementById(id) || {}).value || '';
   return {
-    category: g('as_category'), specification: g('as_specification'), identity_no: g('as_identity_no'),
-    owned_by: g('as_owned_by'), jw_asset_no: g('as_jw_asset_no'), ownership: g('as_ownership'),
-    issued_to: g('as_issued_to'), issued_on: g('as_issued_on'), audit_date: g('as_audit_date'), notes: g('as_notes'),
+    asset_class: g('as_asset_class'), category: g('as_category'), brand: g('as_brand'),
+    configuration: g('as_configuration'), service_tag: g('as_service_tag'), laptop_agreement: g('as_laptop_agreement'),
+    ownership: g('as_ownership') || 'acquisition', vendor_name: g('as_vendor_name'), jw_asset_no: g('as_jw_asset_no'),
+    issued_to: g('as_issued_to'), issued_on: g('as_issued_on'), date_of_return: g('as_date_of_return'), notes: g('as_notes'),
   };
 }
 
@@ -1996,34 +2302,59 @@ async function renderAssets() {
   try { ({ assets } = await api('/assets')); }
   catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
   const canEdit = canEditAssets(State.me);
-  const rows = assets.length ? assets.map(a => `<tr data-asset="${a.id}">
-      <td class="asset-tag"><strong>${esc(a.jw_asset_no || '—')}</strong></td>
-      <td>${esc(a.category || '—')}<div class="muted">${esc(a.specification || '')}</div></td>
-      <td class="asset-tag">${esc(a.identity_no || '—')}</td>
-      <td>${esc(a.owned_by || '—')}<div><span class="pill-own ${a.ownership === 'rent' ? 'rent' : 'acq'}">${OWN_LABEL[a.ownership] || 'Acquisition'}</span></div></td>
-      <td>${esc(a.issued_to || '—')}<div class="muted">${a.issued_on ? 'on ' + esc(fmtDay(a.issued_on)) : ''}</div></td>
-      <td class="muted">${a.audit_date ? esc(fmtDay(a.audit_date)) : '—'}</td>
-      ${canEdit ? `<td style="white-space:nowrap">
-        <button class="icon-btn btn-sm" data-edit="${a.id}" title="Edit">${icon('edit', 'icon-sm')}</button>
-        <button class="icon-btn btn-sm" data-del="${a.id}" title="Delete" style="color:var(--danger)">${icon('trash', 'icon-sm')}</button></td>` : ''}
-    </tr>`).join('') : `<tr><td colspan="${canEdit ? 7 : 6}"><div class="empty">${icon('box')}No assets recorded yet.</div></td></tr>`;
+  const electronic = assets.filter(a => (a.asset_class || 'electronic') !== 'physical');
+  const physical = assets.filter(a => a.asset_class === 'physical');
+
+  const actionsCell = (a) => canEdit ? `<td style="white-space:nowrap">
+      <button class="icon-btn btn-sm" data-edit="${a.id}" title="Edit">${icon('edit', 'icon-sm')}</button>
+      <button class="icon-btn btn-sm" data-del="${a.id}" title="Delete" style="color:var(--danger)">${icon('trash', 'icon-sm')}</button></td>` : '';
+
+  const ownCell = (a) => `<span class="pill-own ${a.ownership === 'rent' ? 'rent' : 'acq'}">${OWN_LABEL[a.ownership] || 'Acquisition'}</span>`;
+  const idCell = (a) => a.ownership === 'rent' ? (a.vendor_name ? 'Vendor: ' + esc(a.vendor_name) : '—') : `<strong>${esc(a.jw_asset_no || '—')}</strong>`;
+
+  const elecTable = `<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>Category</th><th>Brand</th><th>Configuration</th><th>Service Tag</th><th>Issued to</th><th>Ownership</th><th>JW no. / Vendor</th><th>Return</th>${canEdit ? '<th></th>' : ''}
+    </tr></thead><tbody>${electronic.length ? electronic.map(a => `<tr data-asset="${a.id}">
+      <td><strong>${esc(a.category || '—')}</strong></td>
+      <td>${esc(a.brand || '—')}</td>
+      <td class="muted">${esc(a.configuration || a.specification || '—')}</td>
+      <td class="asset-tag">${esc(a.service_tag || a.identity_no || '—')}</td>
+      <td>${esc(a.issued_to || '—')}<div class="muted">${a.issued_on ? fmtDay(a.issued_on) : ''}</div></td>
+      <td>${ownCell(a)}</td>
+      <td class="asset-tag">${idCell(a)}</td>
+      <td class="muted">${a.date_of_return ? fmtDay(a.date_of_return) : '—'}</td>
+      ${actionsCell(a)}
+    </tr>`).join('') : `<tr><td colspan="${canEdit ? 9 : 8}"><div class="empty">${icon('settings')}No electronic assets yet.</div></td></tr>`}</tbody></table></div>`;
+
+  const physTable = `<div class="tbl-wrap"><table class="tbl"><thead><tr>
+      <th>Category</th><th>Brand / make</th><th>Specification</th><th>Issued to / location</th><th>Issued on</th><th>Comments</th>${canEdit ? '<th></th>' : ''}
+    </tr></thead><tbody>${physical.length ? physical.map(a => `<tr data-asset="${a.id}">
+      <td><strong>${esc(a.category || '—')}</strong></td>
+      <td>${esc(a.brand || '—')}</td>
+      <td class="muted">${esc(a.configuration || a.specification || '—')}</td>
+      <td>${esc(a.issued_to || '—')}</td>
+      <td class="muted">${a.issued_on ? fmtDay(a.issued_on) : '—'}</td>
+      <td class="muted">${esc(a.notes || '')}</td>
+      ${actionsCell(a)}
+    </tr>`).join('') : `<tr><td colspan="${canEdit ? 7 : 6}"><div class="empty">${icon('box')}No physical assets yet.</div></td></tr>`}</tbody></table></div>`;
 
   setView(`<div class="page">
     <div class="page-head"><div><div class="crumb">Asset Tracking Tool</div><h1>Asset Register</h1>
-      <p>Every Justwords asset — what it is, who holds it, and when it's next due for audit.</p></div>
+      <p>Every Justwords asset — split into electronic and physical — what it is, who holds it, and how it's owned.</p></div>
       ${canEdit ? `<button class="btn btn-primary" id="addAsset">${icon('plus', 'icon-sm')}Add asset</button>` : ''}</div>
-    <div class="card"><div class="tbl-wrap"><table class="tbl"><thead><tr>
-      <th>JW asset no.</th><th>Category / spec</th><th>Identity no.</th><th>Owned by</th><th>Issued to</th><th>Audit date</th>${canEdit ? '<th></th>' : ''}
-    </tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div class="card"><div class="card-head"><span class="card-title">${icon('settings', 'section-icon')}Electronic assets</span><span class="muted">${electronic.length}</span></div>${elecTable}</div>
+    <div class="card" style="margin-top:18px"><div class="card-head"><span class="card-title">${icon('box', 'section-icon')}Physical assets</span><span class="muted">${physical.length}</span></div>${physTable}</div>
   </div>`);
 
   if (canEdit) {
     const openForm = (a) => {
-      modal(a ? 'Edit asset' : 'Add asset', assetFormBody(a || {}),
+      modal(a ? 'Edit asset' : 'Add asset', assetFormBody(a || { asset_class: 'electronic', ownership: 'acquisition' }),
         `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="saveAsset">${icon('send', 'icon-sm')}Save</button>`);
+      wireAssetForm();
       document.getElementById('saveAsset').onclick = async () => {
         try {
           const body = readAssetForm();
+          if (!body.category) { toast('Pick a category', 'err'); return; }
           if (a) await api('/assets/' + a.id, { method: 'PUT', body });
           else await api('/assets', { method: 'POST', body });
           closeModal(); toast('Asset saved', 'ok'); renderAssets();
@@ -2032,8 +2363,9 @@ async function renderAssets() {
     };
     const byId = {}; assets.forEach(a => byId[a.id] = a);
     const addBtn = document.getElementById('addAsset'); if (addBtn) addBtn.onclick = () => openForm(null);
-    view().querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openForm(byId[b.dataset.edit]));
-    view().querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    view().querySelectorAll('[data-edit]').forEach(b => b.onclick = e => { e.stopPropagation(); openForm(byId[b.dataset.edit]); });
+    view().querySelectorAll('[data-del]').forEach(b => b.onclick = async e => {
+      e.stopPropagation();
       if (!confirm('Delete this asset and its audit history? This cannot be undone.')) return;
       try { await api('/assets/' + b.dataset.del, { method: 'DELETE' }); toast('Asset deleted', 'ok'); renderAssets(); }
       catch (ex) { toast(ex.message, 'err'); }
@@ -2041,63 +2373,127 @@ async function renderAssets() {
   }
 }
 
+const AUDIT_VERDICT = {
+  okay: { label: 'Okay', cls: 'v-okay', badge: 'b-approved' },
+  partial: { label: 'Partial okay', cls: 'v-partial', badge: 'b-review' },
+  not_okay: { label: 'Not okay', cls: 'v-notokay', badge: 'b-sentback' },
+  none: { label: 'Not audited', cls: 'v-none', badge: 'b-draft' },
+};
+function verdictBadge(v) { const m = AUDIT_VERDICT[v] || AUDIT_VERDICT.none; return `<span class="badge ${m.badge}"><span class="dot"></span>${m.label}</span>`; }
+let AUDIT_FILTER = null;   // null = show all; otherwise one of okay/partial/not_okay/none
+
 async function renderAssetAudit() {
   renderShell(`<div class="page"><div class="empty">${icon('clock')}Loading…</div></div>`);
   let assets = [], audits = [];
   try { ([{ assets }, { audits }] = await Promise.all([api('/assets'), api('/asset-audits')])); }
   catch (ex) { setView(`<div class="page"><div class="card card-pad"><div class="empty">${icon('info')}${esc(ex.message)}</div></div></div>`); return; }
   const canEdit = canEditAssets(State.me);
-  const today = new Date().toISOString().slice(0, 10);
 
-  const assetRows = assets.length ? assets.map(a => {
-    const due = a.audit_date && a.audit_date < today;
+  // Latest audit per asset → each asset's current verdict.
+  const latest = {};
+  audits.forEach(a => { if (!latest[a.asset_id]) latest[a.asset_id] = a; }); // audits come newest-first
+  const assetLabel = (a) => `${a.category || 'Asset'}${a.jw_asset_no ? ' · ' + a.jw_asset_no : (a.service_tag ? ' · ' + a.service_tag : '')}`;
+  const verdictOf = (a) => (latest[a.id] && AUDIT_VERDICT[latest[a.id].status]) ? latest[a.id].status : 'none';
+
+  // Counts for the chart.
+  const counts = { okay: 0, partial: 0, not_okay: 0, none: 0 };
+  assets.forEach(a => { counts[verdictOf(a)]++; });
+  const total = assets.length || 1;
+  const chartKeys = ['okay', 'partial', 'not_okay', 'none'];
+  const chart = `<div class="audit-chart">
+    ${chartKeys.map(k => {
+      const pct = Math.round((counts[k] / total) * 100);
+      const m = AUDIT_VERDICT[k];
+      const active = AUDIT_FILTER === k;
+      return `<button class="audit-bar ${m.cls} ${active ? 'active' : ''}" data-vfilter="${k}" title="Click to see these assets">
+        <span class="ab-top"><span class="ab-label">${m.label}</span><span class="ab-count">${counts[k]}</span></span>
+        <span class="ab-track"><span class="ab-fill" style="width:${pct}%"></span></span>
+        <span class="ab-pct muted">${pct}%</span></button>`;
+    }).join('')}
+  </div>`;
+
+  const shown = assets.filter(a => !AUDIT_FILTER || verdictOf(a) === AUDIT_FILTER);
+  const assetRows = shown.length ? shown.map(a => {
+    const v = verdictOf(a); const la = latest[a.id];
     return `<tr>
-      <td class="asset-tag"><strong>${esc(a.jw_asset_no || '—')}</strong></td>
-      <td>${esc(a.category || '—')}<div class="muted">${esc(a.identity_no || '')}</div></td>
+      <td><strong>${esc(a.category || '—')}</strong><div class="muted">${esc(a.jw_asset_no || a.service_tag || a.identity_no || '')}</div></td>
       <td>${esc(a.issued_to || '—')}</td>
-      <td class="${due ? 'audit-due' : 'muted'}">${a.audit_date ? esc(fmtDay(a.audit_date)) : '—'}${due ? ' · overdue' : ''}</td>
-      ${canEdit ? `<td><button class="btn btn-sm" data-audit="${a.id}">${icon('shield', 'icon-sm')}Record audit</button></td>` : ''}
+      <td>${verdictBadge(v)}</td>
+      <td class="muted">${la ? esc(la.belonging_to || '—') : '—'}</td>
+      <td class="muted">${la && la.functional ? esc(la.functional) : '—'}</td>
+      <td class="muted">${la ? fmtDay(la.audit_date) : 'Never'}</td>
+      ${canEdit ? `<td><button class="btn btn-sm btn-primary" data-audit="${a.id}">${icon('shield', 'icon-sm')}Start audit</button></td>` : ''}
     </tr>`;
-  }).join('') : `<tr><td colspan="${canEdit ? 5 : 4}"><div class="empty">${icon('box')}No assets to audit yet.</div></td></tr>`;
+  }).join('') : `<tr><td colspan="${canEdit ? 7 : 6}"><div class="empty">${icon('box')}${AUDIT_FILTER ? 'No assets with this verdict.' : 'No assets to audit yet.'}</div></td></tr>`;
 
-  const logRows = audits.length ? audits.map(a => `<tr>
+  const logRows = audits.length ? audits.slice(0, 60).map(a => `<tr>
       <td class="muted">${esc(fmtDay(a.audit_date))}</td>
-      <td class="asset-tag">${esc(a.jw_asset_no || a.identity_no || '—')}<div class="muted">${esc(a.category || '')}</div></td>
-      <td>${esc(a.status || '—')}</td><td>${esc(a.condition || '—')}</td>
+      <td><strong>${esc(a.category || '—')}</strong><div class="muted asset-tag">${esc(a.jw_asset_no || a.identity_no || '')}</div></td>
+      <td>${verdictBadge(AUDIT_VERDICT[a.status] ? a.status : 'none')}</td>
+      <td class="muted">${esc(a.belonging_to || '—')}</td>
+      <td class="muted">${esc(a.functional || '—')}</td>
       <td>${esc(a.remarks || '')}</td><td class="muted">${esc(a.audited_by_name || '')}</td>
-    </tr>`).join('') : `<tr><td colspan="6"><div class="empty">${icon('file')}No audits recorded yet.</div></td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="7"><div class="empty">${icon('file')}No audits recorded yet.</div></td></tr>`;
 
   setView(`<div class="page">
     <div class="page-head"><div><div class="crumb">Asset Tracking Tool</div><h1>Asset Audit</h1>
-      <p>Verify each asset's condition and whereabouts, and keep a dated audit trail.</p></div></div>
-    <div class="card"><div class="card-head"><span class="card-title">${icon('box', 'section-icon')}Assets &amp; audit status</span></div>
+      <p>Audit status at a glance. Click a bar to see those assets, then start an audit to log where each one is, whether it works, and your verdict.</p></div></div>
+    <div class="card"><div class="card-head"><span class="card-title">${icon('chart', 'section-icon')}Audit status overview</span>
+      ${AUDIT_FILTER ? `<button class="btn btn-sm btn-ghost" id="clearVFilter">${icon('x', 'icon-sm')}Clear filter</button>` : `<span class="muted">${assets.length} asset${assets.length === 1 ? '' : 's'}</span>`}</div>
+      <div class="card-pad">${chart}</div></div>
+    <div class="card" style="margin-top:18px"><div class="card-head"><span class="card-title">${icon('box', 'section-icon')}Assets${AUDIT_FILTER ? ' · ' + AUDIT_VERDICT[AUDIT_FILTER].label : ''}</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr>
-        <th>JW asset no.</th><th>Category</th><th>Issued to</th><th>Audit date</th>${canEdit ? '<th></th>' : ''}
+        <th>Asset</th><th>Issued to</th><th>Latest verdict</th><th>Current position / belonging to</th><th>Functional?</th><th>Last audited</th>${canEdit ? '<th></th>' : ''}
       </tr></thead><tbody>${assetRows}</tbody></table></div></div>
     <div class="card" style="margin-top:18px"><div class="card-head"><span class="card-title">${icon('clock', 'section-icon')}Audit history</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr>
-        <th>Date</th><th>Asset</th><th>Status</th><th>Condition</th><th>Remarks</th><th>Audited by</th>
+        <th>Date</th><th>Asset</th><th>Verdict</th><th>Position / belonging to</th><th>Functional?</th><th>Notes</th><th>Audited by</th>
       </tr></thead><tbody>${logRows}</tbody></table></div></div>
   </div>`);
 
+  view().querySelectorAll('[data-vfilter]').forEach(b => b.onclick = () => {
+    AUDIT_FILTER = AUDIT_FILTER === b.dataset.vfilter ? null : b.dataset.vfilter;
+    renderAssetAudit();
+  });
+  const clr = document.getElementById('clearVFilter'); if (clr) clr.onclick = () => { AUDIT_FILTER = null; renderAssetAudit(); };
+
   if (canEdit) {
     const byId = {}; assets.forEach(a => byId[a.id] = a);
+    const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     view().querySelectorAll('[data-audit]').forEach(b => b.onclick = () => {
       const a = byId[b.dataset.audit];
-      modal(`Record audit — ${esc(a.jw_asset_no || a.category || 'asset')}`, `
-        <div class="field"><label>Audit date</label><input type="date" id="au_date" value="${today}"></div>
-        <div class="field"><label>Status</label><select id="au_status">
-          <option>Verified</option><option>Needs repair</option><option>Damaged</option><option>Missing</option></select></div>
-        <div class="field"><label>Condition</label><select id="au_condition">
-          <option>Good</option><option>Fair</option><option>Poor</option></select></div>
-        <div class="field"><label>Remarks</label><textarea id="au_remarks" rows="2" placeholder="Anything worth noting…"></textarea></div>`,
+      const la = latest[a.id];
+      modal(`Start audit — ${esc(assetLabel(a))}`, `
+        <div class="audit-asset-meta">
+          <div><span class="muted">Category</span><strong>${esc(a.category || '—')}</strong></div>
+          <div><span class="muted">${a.ownership === 'rent' ? 'Vendor' : 'JW Asset No.'}</span><strong>${esc(a.ownership === 'rent' ? (a.vendor_name || '—') : (a.jw_asset_no || '—'))}</strong></div>
+          <div><span class="muted">Issued to</span><strong>${esc(a.issued_to || '—')}</strong></div>
+          <div><span class="muted">Audit date</span><strong>${today} <span class="muted">(auto)</span></strong></div>
+        </div>
+        <div class="field" style="margin-top:14px"><label>Current position / belonging to</label>
+          <input id="au_belong" value="${esc(la ? (la.belonging_to || '') : (a.issued_to || ''))}" placeholder="Where is it now / who holds it?"></div>
+        <div class="field"><label>Functional?</label><select id="au_func">
+          <option>Yes</option><option>Partially</option><option>No</option></select></div>
+        <div class="field"><label>Verdict</label>
+          <div class="seg seg-soft" id="au_verdict">
+            <button type="button" class="seg-btn active" data-verdict="okay">${icon('check', 'icon-sm')}Okay</button>
+            <button type="button" class="seg-btn" data-verdict="partial">Partial okay</button>
+            <button type="button" class="seg-btn" data-verdict="not_okay">Not okay</button>
+          </div></div>
+        <div class="field"><label>Notes</label><textarea id="au_notes" rows="2" placeholder="Anything worth noting…"></textarea></div>`,
         `<button class="btn" data-close>Cancel</button><button class="btn btn-primary" id="saveAudit">${icon('send', 'icon-sm')}Save audit</button>`);
+      let verdict = 'okay';
+      document.querySelectorAll('#au_verdict [data-verdict]').forEach(btn => btn.onclick = () => {
+        verdict = btn.dataset.verdict;
+        document.querySelectorAll('#au_verdict [data-verdict]').forEach(x => x.classList.toggle('active', x === btn));
+      });
       document.getElementById('saveAudit').onclick = async () => {
         try {
           await api('/asset-audits', { method: 'POST', body: {
-            asset_id: a.id, audit_date: document.getElementById('au_date').value,
-            status: document.getElementById('au_status').value, condition: document.getElementById('au_condition').value,
-            remarks: document.getElementById('au_remarks').value } });
+            asset_id: a.id, status: verdict,
+            belonging_to: document.getElementById('au_belong').value,
+            functional: document.getElementById('au_func').value,
+            remarks: document.getElementById('au_notes').value } });
           closeModal(); toast('Audit recorded', 'ok'); renderAssetAudit();
         } catch (ex) { toast(ex.message, 'err'); }
       };
@@ -2113,13 +2509,13 @@ function guideSteps(me) {
   const common = [
     { icon: 'home', title: 'Welcome to the Justwords Portal', body: `Hi ${esc(me.name.split(' ')[0])}! This quick tour shows what you can do here as <strong>${esc(accessLabel(me))}</strong>. Use the ← → buttons to move through it, or Skip any time.` },
     { icon: 'bell', title: 'Dashboard & announcements', body: 'Your home screen shows company news, the Training Centre, quick links and — for approvers — anything awaiting your action.' },
-    { icon: 'grid', title: 'Tools, About & HR Desk', body: 'The top navigation groups everything: Tools & Access, About Us, the HR Desk (handbook, policies, leave, vacancies) and SOP documents.' },
+    { icon: 'grid', title: 'Tools, About & HR Desk', body: 'The top navigation groups everything: Tools & Access, About Us, the HR Desk (handbook, policies, vacancies, referrals & reimbursements) and SOP documents.' },
     { icon: 'chat', title: 'Messages & directory', body: 'Use Messages for internal chat, and the Team Directory to find any colleague and start a direct message.' },
   ];
   const perfSelf = { icon: 'chart', title: 'Performance → KPI & Appraisal', body: 'Open <strong>Performance</strong> and pick KPI or Appraisal. The <strong>Self</strong> tab holds your own forms. Fill a quarter, submit, and track it up the approval chain. A form only opens for editing while HR has the filing window open.' };
   const perfTeam = { icon: 'users', title: 'Performance → Team tab', body: 'Because people report to you, each Performance page also has a <strong>Team</strong> tab: review, comment on, approve or send back your team\'s KPI and appraisal forms. Your edits and comments are saved and shown to them.' };
   const newForm = { icon: 'plus', title: 'Starting another form', body: 'Once a form is approved it locks. When HR opens the next window, a <strong>Start form</strong> button appears on the Self tab so you can begin the next quarter.' };
-  const assets = { icon: 'box', title: 'Asset Tracking Tool', body: 'Under <strong>Asset Tracking Tool</strong>: keep the Asset Register (category, specs, JW asset no., owner, issued-to, rent/acquisition, audit date) and record dated checks on the Asset Audit page.' };
+  const assets = { icon: 'box', title: 'Asset Tracking Tool', body: 'Under <strong>Asset Tracking Tool</strong>: keep the Asset Register split into <strong>Electronic</strong> and <strong>Physical</strong> assets (brand, configuration, service tag, rental vs acquisition, issued-to), then use <strong>Asset Audit</strong> to start an audit — it logs the date automatically and your okay / partial / not-okay verdict, charted for a quick overview.' };
   const windows = { icon: 'toggle', title: 'Form windows (open/close)', body: 'From your profile menu → <strong>Form Windows</strong>, open or close KPI and Appraisal filing for everyone, or per person. Nobody can start or edit a form while its window is closed.' };
   const inbox = { icon: 'bulb', title: 'Suggestion inbox', body: 'The Suggestion Inbox collects feedback from associates (anonymous or named) for you to review and resolve.' };
   const console_ = { icon: 'settings', title: 'HR Admin Console', body: 'The HR Admin Console gives usage stats, content-page editing and a full org-wide view of every KPI and appraisal.' };
@@ -2167,7 +2563,7 @@ function renderGuide() {
       </div>
     </div>
   </div></div>`;
-  root.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', e => { if (e.target.matches('[data-close]')) closeModal(); }));
+  wireClose(root);
   document.getElementById('gPrev').onclick = () => { GuideIdx = i - 1; renderGuide(); };
   document.getElementById('gNext').onclick = () => { if (i === steps.length - 1) closeModal(); else { GuideIdx = i + 1; renderGuide(); } };
 }
@@ -2209,8 +2605,9 @@ async function route() {
     if (path === '/asset-audit') return renderAssetAudit();
     if (path === '/directory') return renderDirectory();
     if (path.startsWith('/page/')) return renderPage(path.split('/')[2]);
-    if (path === '/leave') return renderLeave();
     if (path === '/vacancies') return renderVacancies();
+    if (path === '/referrals') return renderReferrals();
+    if (path === '/reimbursements') return renderReimbursements();
     if (path === '/suggestions') return renderSuggestions();
     if (path === '/hr/suggestions') return renderHRSuggestions();
     if (path === '/hr/windows') return renderFormWindows();
