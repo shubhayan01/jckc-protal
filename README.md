@@ -1,4 +1,4 @@
-# Justwords Associates' Portal
+# Justwords Collaborative Knowledge Center
 
 An internal Employee Management System for Justwords — login, role-based navigation,
 a quarterly KPI Incentive Plan + Appraisal workflow with a full manager → director → CEO

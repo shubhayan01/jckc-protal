@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Justwords Associates' Portal — Express server.
+ * Justwords Collaborative Knowledge Center — Express server.
  * Serves the SPA in /public and a small REST API backed by SQLite.
  */
 const path = require('path');
@@ -1053,5 +1053,5 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => {
-  console.log(`\n  Justwords Associates' Portal running at http://localhost:${PORT}\n`);
+  console.log(`\n  Justwords Collaborative Knowledge Center running at http://localhost:${PORT}\n`);
 });

@@ -1,5 +1,5 @@
 /* ============================================================
-   Justwords Associates' Portal — SPA client
+   Justwords Collaborative Knowledge Center — SPA client
    ============================================================ */
 'use strict';
 
@@ -182,7 +182,7 @@ function renderShell(content) {
     <button class="icon-btn nav-toggle" id="navToggle">${icon('menu')}</button>
     <a href="#/dashboard" class="brand">
       <span class="logo">JW</span>
-      <span>Justwords<small>Associates' Portal</small></span>
+      <span>Justwords<small>Collaborative Knowledge Center</small></span>
     </a>
     <nav class="nav" id="mainNav">${navHTML}</nav>
     <div class="spacer"></div>
@@ -340,7 +340,7 @@ function renderLogin() {
       </div>
       <div class="mark"><span class="logo" style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;">JW</span> Justwords</div>
       <div>
-        <h1>Associates'<br>Portal</h1>
+        <h1>Collaborative<br>Knowledge Center</h1>
         <p>Together we create content-driven, transformational digital journeys for our customers — and a single home for KPIs, appraisals, policies and the people behind the work.</p>
       </div>
       <div class="foot">Justwords Collaborative Knowledge Center · Internal use only
@@ -833,7 +833,7 @@ function renderRows(rows, editable) {
       <td><input class="kpi-num" data-k="${q}" ${editable ? '' : 'readonly'} value="${esc(r[q] || '')}"></td>
       <td><textarea rows="2" data-k="comments" ${editable ? '' : 'readonly'}>${esc(r.comments || '')}</textarea></td>
       <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="doc-attached" title="${esc(r.doc.name || 'file')}">${icon('check', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 16)}</a>` : `<span class="muted">—</span>`}
-        ${editable ? `<label class="btn btn-sm doc-attach-btn">${icon(r.doc ? 'edit' : 'plus', 'icon-sm')}${r.doc ? 'Replace' : 'Attach'}<input type="file" data-file="${i}" style="display:none"></label>` : ''}</td>
+        ${editable ? `<div class="doc-actions"><label class="btn btn-sm doc-attach-btn">${icon(r.doc ? 'edit' : 'plus', 'icon-sm')}${r.doc ? 'Replace' : 'Attach'}<input type="file" data-file="${i}" style="display:none"></label>${r.doc ? `<button class="btn btn-sm doc-remove-btn" data-docdel="${i}" title="Remove document">${icon('trash', 'icon-sm')}Remove</button>` : ''}</div>` : ''}</td>
       ${editable ? `<td>${r.locked ? '' : `<button class="icon-btn btn-sm" data-del="${i}" title="Remove">${icon('x', 'icon-sm')}</button>`}</td>` : ''}
     </tr>`;
   });
@@ -935,6 +935,18 @@ function wireRowEvents() {
     view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', () => {
       const d = collectData(); const el = document.getElementById('autoScore'); if (el) el.textContent = computeAuto(d.rows);
     }));
+  });
+  view().querySelectorAll('[data-docdel]').forEach(b => b.onclick = () => {
+    const i = Number(b.dataset.docdel);
+    const data = collectData();
+    data.rows[i].doc = null;
+    FormCtx.form.data = data;
+    view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
+    wireRowEvents();
+    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', () => {
+      const d = collectData(); const a = document.getElementById('autoScore'); if (a) a.textContent = computeAuto(d.rows);
+    }));
+    toast('Document removed — remember to Save', 'ok');
   });
   view().querySelectorAll('[data-file]').forEach(inp => inp.onchange = async () => {
     const file = inp.files[0]; if (!file) return;
@@ -1374,7 +1386,7 @@ function downloadAppraisal(f) {
     <h1>Annual Appraisal — ${esc(owner.name)}</h1>
     <p class="meta">${esc(owner.designation || '')} · ${esc(owner.department || '')} · ${esc(f.fy)} · Status: ${esc(f.status)}</p>
     ${body}
-    <p class="meta" style="margin-top:32px">Generated from the Justwords Associates' Portal on ${new Date().toLocaleString('en-IN')}.</p>
+    <p class="meta" style="margin-top:32px">Generated from the Justwords Collaborative Knowledge Center on ${new Date().toLocaleString('en-IN')}.</p>
     </body></html>`;
   const blob = new Blob([html], { type: 'text/html' });
   const a = document.createElement('a');
@@ -1679,8 +1691,11 @@ async function renderReferrals() {
       const file = e.target.files[0]; if (!file) return;
       const fd = new FormData(); fd.append('file', file);
       try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (!res.ok) throw new Error(j.error);
-        resume = { file: j.filename, name: j.original }; document.getElementById('rfResumeName').textContent = ' ✓ ' + j.original; }
-      catch (ex) { toast(ex.message, 'err'); }
+        resume = { file: j.filename, name: j.original };
+        const sp = document.getElementById('rfResumeName');
+        sp.innerHTML = ` ✓ ${esc(j.original)} <button type="button" class="btn-link-remove" id="rfResumeRm">remove</button>`;
+        document.getElementById('rfResumeRm').onclick = () => { resume = null; document.getElementById('rfResume').value = ''; sp.textContent = ''; };
+      } catch (ex) { toast(ex.message, 'err'); }
     };
     document.getElementById('rfSave').onclick = async () => {
       const name = document.getElementById('rfName').value.trim();
@@ -1778,8 +1793,11 @@ async function renderReimbursements() {
       const file = e.target.files[0]; if (!file) return;
       const fd = new FormData(); fd.append('file', file);
       try { const res = await fetch('/api/upload', { method: 'POST', body: fd }); const j = await res.json(); if (!res.ok) throw new Error(j.error);
-        receipt = { file: j.filename, name: j.original }; document.getElementById('rbReceiptName').textContent = ' ✓ ' + j.original; }
-      catch (ex) { toast(ex.message, 'err'); }
+        receipt = { file: j.filename, name: j.original };
+        const sp = document.getElementById('rbReceiptName');
+        sp.innerHTML = ` ✓ ${esc(j.original)} <button type="button" class="btn-link-remove" id="rbReceiptRm">remove</button>`;
+        document.getElementById('rbReceiptRm').onclick = () => { receipt = null; document.getElementById('rbReceipt').value = ''; sp.textContent = ''; };
+      } catch (ex) { toast(ex.message, 'err'); }
     };
     document.getElementById('rbSave').onclick = async () => {
       const title = document.getElementById('rbTitle').value.trim();
@@ -1931,7 +1949,7 @@ async function renderAdmin() {
   const { totals, byDept, formStatus, recent } = await api('/admin/stats');
   const stat = (lbl, val, foot) => `<div class="stat"><div class="lbl">${lbl}</div><div class="val">${val}</div>${foot ? `<div class="foot">${foot}</div>` : ''}</div>`;
   setView(`<div class="page"><div class="page-head"><div><div class="crumb">HR Admin</div><h1>Admin console</h1>
-    <p>Usage and workforce overview · Justwords Associates' Portal</p></div></div>
+    <p>Usage and workforce overview · Justwords Collaborative Knowledge Center</p></div></div>
     <div class="grid grid-4">
       ${stat('Associates', totals.employees)}
       ${stat('Managers', totals.managers)}
@@ -2292,7 +2310,10 @@ function assetFormBody(a = {}) {
           ${a.laptop_agreement
             ? `<a href="/uploads/${esc(a.laptop_agreement)}" target="_blank" class="agreement-file">${icon('file', 'icon-sm')}${esc(a.laptop_agreement_name || 'Agreement')}</a>`
             : `<span class="muted">${icon('file', 'icon-sm')}No agreement attached yet</span>`}
-          <label class="btn btn-sm"><input type="file" id="as_agreementFile" style="display:none">${icon('plus', 'icon-sm')}${a.laptop_agreement ? 'Replace' : 'Attach'} agreement</label>
+          <span style="display:flex;gap:8px">
+            <label class="btn btn-sm"><input type="file" id="as_agreementFile" style="display:none">${icon('plus', 'icon-sm')}${a.laptop_agreement ? 'Replace' : 'Attach'}</label>
+            ${a.laptop_agreement ? `<button type="button" class="btn btn-sm" id="as_agreementRemove">${icon('trash', 'icon-sm')}Remove</button>` : ''}
+          </span>
         </div>
       </div>`
     : `<input type="hidden" id="as_laptop_agreement" value="${esc(a.laptop_agreement || '')}"><input type="hidden" id="as_laptop_agreement_name" value="${esc(a.laptop_agreement_name || '')}">`;
@@ -2358,6 +2379,8 @@ function wireAssetForm() {
       toast('Agreement attached', 'ok');
     } catch (ex) { toast(ex.message, 'err'); }
   };
+  const agRm = document.getElementById('as_agreementRemove');
+  if (agRm) agRm.onclick = () => reopen({ laptop_agreement: '', laptop_agreement_name: '' });
 }
 function readAssetForm() {
   const g = id => (document.getElementById(id) || {}).value || '';

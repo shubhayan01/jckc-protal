@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Database layer for the Justwords Associates' Portal.
+ * Database layer for the Justwords Collaborative Knowledge Center.
  * Uses Node's built-in node:sqlite (no native build needed on Windows).
  * Creates the schema, seeds employees from seed_employees.json, seeds
  * default content pages, and exposes a few helpers used by server.js.
