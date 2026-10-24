@@ -709,7 +709,10 @@ function paintForm() {
         ? `<div class="locked-banner b-sentback" style="background:var(--danger-soft);color:var(--danger)">${icon('arrow')} Sent back for revision — update and resubmit.</div>`
         : '';
 
-  const qtabs = ['Q1', 'Q2', 'Q3', 'Q4'].map(q => `<button class="qtab ${q === f.quarter ? 'active' : ''}" data-q="${q}">${q}</button>`).join('');
+  const qtabs = ['Q1', 'Q2', 'Q3', 'Q4'].map(q => {
+    const meta = (f.quarters && f.quarters[q]) || {};
+    return `<button class="qtab ${q === f.quarter ? 'active' : ''} ${meta.locked ? 'locked' : ''}" data-q="${q}" title="${meta.locked ? q + ' is locked (' + (meta.status === 'approved' ? 'approved' : 'in review') + ')' : 'Fill ' + q}">${q}${meta.locked ? ' ' + icon('lock', 'icon-sm') : ''}</button>`;
+  }).join('');
 
   // manager comment blocks — one entry per manager per quarter, each attributed by name.
   const quartersToShow = isKPI ? ['Q1', 'Q2', 'Q3', 'Q4'] : [f.quarter];
@@ -764,11 +767,16 @@ function paintForm() {
     </div>
 
     <div class="card"><div class="card-head"><span class="card-title">${icon('chart', 'section-icon')}${isKPI ? 'Key Performance Indicators' : 'Objectives & Key Results'}</span>
-      <span class="muted">Filing for ${f.quarter}</span></div>
-      <div class="tbl-wrap"><table class="kpi-table" id="kpiTable"><thead><tr>
+      <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span></div>
+      <div class="tbl-wrap"><table class="kpi-table ${isKPI ? 'kpi-table-quarters' : ''}" id="kpiTable"><thead><tr>
         <th style="min-width:220px">Objective / KPI</th>
-        <th>Goal (Year)</th><th>Weightage&nbsp;%</th><th>YTD&nbsp;%</th>
-        <th>${f.quarter} Result</th><th style="min-width:150px">Comments</th><th>Support Doc</th>${editable ? '<th></th>' : ''}
+        <th>Goal (Year)</th><th>Weightage&nbsp;%</th>
+        ${['Q1', 'Q2', 'Q3', 'Q4'].map(Q => {
+          const meta = (f.quarters && f.quarters[Q]) || {};
+          const curq = Q === f.quarter;
+          return `<th class="q-head ${curq ? 'q-head-current' : ''} ${meta.locked ? 'q-head-done' : ''}">${Q}${curq ? ' <span class="q-tag">now</span>' : meta.locked ? ' ' + icon('lock', 'icon-sm') : ''}</th>`;
+        }).join('')}
+        <th style="min-width:150px">Comments</th><th>Support Doc</th>${editable ? '<th></th>' : ''}
       </tr></thead><tbody>${rowsHTML}</tbody></table></div>
       ${editable ? `<div class="card-pad"><button class="btn btn-sm" id="addRow">${icon('plus', 'icon-sm')}Add ${isKPI ? 'Individual KPI' : 'Objective'} row</button></div>` : ''}
     </div>
@@ -816,21 +824,38 @@ function paintForm() {
 function actionLabel(a) { return ({ submit: 'Submitted for review', approve: 'Approved & forwarded', send_back: 'Sent back for revision', edit: 'Edited the form', remark: 'Added an employee remark' }[a] || a); }
 
 function renderRows(rows, editable) {
-  const q = FormCtx.quarter.toLowerCase();
+  const cur = FormCtx.quarter.toLowerCase();
+  const qmeta = (FormCtx.form && FormCtx.form.quarters) || {};
+  const QS = ['q1', 'q2', 'q3', 'q4'];
+  // one more column (del) only when editable; +3 quarter columns vs. the old single
+  const span = editable ? 10 : 9;
   let html = '';
   let lastCat = null;
   rows.forEach((r, i) => {
     if (r.cat !== lastCat) {
-      html += `<tr class="kpi-cat"><td colspan="${editable ? 8 : 7}">${esc(r.cat)}</td></tr>`;
+      html += `<tr class="kpi-cat"><td colspan="${span}">${esc(r.cat)}</td></tr>`;
       lastCat = r.cat;
     }
     const rd = r.locked ? 'readonly' : (editable ? '' : 'readonly');
+    // Each quarter is its own form. Only the quarter this form is filing is
+    // editable; the others show their own saved result read-only — a finished
+    // ("done": approved / in review) quarter is locked history.
+    const qcells = QS.map(qk => {
+      const Q = qk.toUpperCase();
+      const meta = qmeta[Q] || {};
+      const isCur = qk === cur;
+      const val = isCur ? (r[qk] || '') : (Array.isArray(meta.results) ? (meta.results[i] || '') : '');
+      const canEditCell = isCur && editable && !r.locked;
+      const cls = 'kpi-num q-cell' + (isCur ? ' q-cell-current' : '') + (meta.locked ? ' q-cell-done' : '');
+      return `<td class="q-td${isCur ? ' q-td-current' : ''}">
+        <input class="${cls}" ${isCur ? `data-k="${qk}"` : ''} ${canEditCell ? '' : 'readonly'} value="${esc(val)}" title="${Q}${meta.locked ? ' · locked' : isCur ? ' · now filing' : ''}">
+      </td>`;
+    }).join('');
     html += `<tr data-row="${i}">
       <td><textarea rows="2" data-k="kpi" ${rd}>${esc(r.kpi || '')}</textarea></td>
       <td><input class="kpi-num" data-k="goal" ${rd} value="${esc(r.goal || '')}"></td>
       <td><input class="kpi-num" data-k="weight" ${editable ? '' : 'readonly'} value="${esc(r.weight || '')}"></td>
-      <td><input class="kpi-num" data-k="ytd" ${editable ? '' : 'readonly'} value="${esc(r.ytd || '')}"></td>
-      <td><input class="kpi-num" data-k="${q}" ${editable ? '' : 'readonly'} value="${esc(r[q] || '')}"></td>
+      ${qcells}
       <td><textarea rows="2" data-k="comments" ${editable ? '' : 'readonly'}>${esc(r.comments || '')}</textarea></td>
       <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="doc-attached" title="${esc(r.doc.name || 'file')}">${icon('check', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 16)}</a>` : `<span class="muted">—</span>`}
         ${editable ? `<div class="doc-actions"><label class="btn btn-sm doc-attach-btn">${icon(r.doc ? 'edit' : 'plus', 'icon-sm')}${r.doc ? 'Replace' : 'Attach'}<input type="file" data-file="${i}" style="display:none"></label>${r.doc ? `<button class="btn btn-sm doc-remove-btn" data-docdel="${i}" title="Remove document">${icon('trash', 'icon-sm')}Remove</button>` : ''}</div>` : ''}</td>

@@ -276,8 +276,24 @@ svg { display: block; }
 .approved-banner { background: var(--success-soft); color: var(--success); }
 
 .qtabs { display: inline-flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 10px; }
-.qtab { padding: 7px 16px; border-radius: 7px; border: none; background: none; font-weight: 600; font-size: 13px; color: var(--text-2); }
+.qtab { padding: 7px 16px; border-radius: 7px; border: none; background: none; font-weight: 600; font-size: 13px; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; }
 .qtab.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow); }
+.qtab.locked { color: var(--text-3); }
+.qtab.locked.active { color: var(--text-2); }
+
+/* KPI tracker — all four quarters side by side ---------------------------- */
+.kpi-table-quarters .q-head { text-align: center; min-width: 72px; }
+.kpi-table-quarters .q-head-current { background: var(--accent-soft, var(--surface)); color: var(--accent); border-bottom: 2px solid var(--accent); }
+.kpi-table-quarters .q-head-done { color: var(--text-3); }
+.kpi-table-quarters .q-head svg { vertical-align: -2px; opacity: .7; }
+.q-tag { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; background: var(--accent); color: #fff; border-radius: 5px; padding: 1px 5px; font-weight: 800; }
+.kpi-table-quarters .q-td { text-align: center; padding: 4px 5px; }
+.kpi-table-quarters .q-td-current { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.kpi-table-quarters .q-cell { width: 60px; text-align: center; }
+.kpi-table-quarters .q-cell-current { font-weight: 700; }
+.kpi-table-quarters .q-cell-current:read-only { color: var(--text); }
+.kpi-table-quarters .q-cell-done { color: var(--text-3); }
+.kpi-table-quarters .q-cell-done:read-only { color: var(--text-3); }
 
 .timeline { position: relative; padding-left: 22px; }
 .timeline::before { content: ""; position: absolute; left: 6px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }

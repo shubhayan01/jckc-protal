@@ -184,6 +184,44 @@ function formView(form, viewer) {
   }
 
   const showScores = !isAppraisal || fullAccess;    // scores are confidential on appraisals
+
+  // ---- KPI: all four quarters visible together -------------------------------
+  // Each quarter is its own form record running its own approval chain, but the
+  // tracker shows Q1–Q4 side by side. For every quarter other than this one we
+  // pull its own form's result + status so a finished quarter stays visible
+  // (read-only) as "previous data" while a later quarter is being filled.
+  let quarters;
+  if (form.type === 'kpi') {
+    const sibs = db.prepare(
+      "SELECT quarter, data, status FROM forms WHERE type='kpi' AND user_id=? AND fy=?"
+    ).all(form.user_id, form.fy);
+    const byQ = {};
+    for (const s of sibs) { try { byQ[s.quarter] = { data: JSON.parse(s.data || '{}'), status: s.status }; } catch (_) { byQ[s.quarter] = { data: {}, status: s.status }; } }
+    const myRows = Array.isArray(data.rows) ? data.rows : [];
+    quarters = {};
+    for (const q of ['Q1', 'Q2', 'Q3', 'Q4']) {
+      const qk = q.toLowerCase();
+      const sib = q === form.quarter ? { data, status: form.status } : byQ[q];
+      const srows = sib && Array.isArray(sib.data.rows) ? sib.data.rows : [];
+      // Align the sibling quarter's results to THIS form's rows: match on the
+      // objective text first (robust to re-ordering), fall back to position.
+      const results = myRows.map((r, i) => {
+        let hit = null;
+        if (r && r.kpi) hit = srows.find(x => x && x.kpi && x.kpi.trim() === r.kpi.trim());
+        if (!hit) hit = srows[i];
+        return hit ? (hit[qk] || '') : '';
+      });
+      const st = sib ? sib.status : 'none';
+      quarters[q] = {
+        results,
+        status: st,
+        exists: !!sib,
+        // "done" quarters are locked and shown as history; in_review is also locked.
+        locked: st === 'approved' || st === 'in_review',
+      };
+    }
+  }
+
   return {
     id: form.id, type: form.type, fy: form.fy, quarter: form.quarter,
     status: form.status, stage_index: form.stage_index,
@@ -202,7 +240,7 @@ function formView(form, viewer) {
       else if (form.status === 'sent_back' && i === 0) state = 'sent_back';
       return { id: cid, name: u.name, designation: u.designation, state };
     }),
-    data,
+    data, quarters,
     history: db.prepare('SELECT a.*, u.name actor_name FROM approvals a JOIN users u ON u.id=a.actor_id WHERE a.form_id=? ORDER BY a.at').all(form.id),
     rights: {
       isOwner, isAncestor, canApprove, canEdit, windowOpen,
