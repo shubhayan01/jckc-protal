@@ -929,9 +929,13 @@ body::before {
         squeezed. ---- */
 @media (min-width: 901px) {
   .appbar { gap: 8px; padding: 0 18px; }
-  .appbar .nav { position: static; left: auto; transform: none; margin: 0 4px; flex-wrap: nowrap; min-width: 0; }
   .appbar .spacer { flex: 1; min-width: 4px; }
   .brand, .appbar-actions { flex-shrink: 0; }
+}
+/* the inline desktop nav only has room beside the brand + action icons at wide
+   widths — see the finishing pass for the <=1150px hamburger switch */
+@media (min-width: 1151px) {
+  .appbar .nav { position: static; left: auto; transform: none; margin: 0 4px; flex-wrap: nowrap; min-width: 0; }
 }
 .nav-link, .dropdown a, .user-dd a, .user-dd button { white-space: nowrap; }
 .nav-link { padding: 8px 10px; font-size: 13px; }
@@ -1432,9 +1436,28 @@ a:hover { color: #000; }
 /* ---- top-nav tools: stop the dropdowns running off the right edge
         and keep them above all page content (fixes the overlap). ---- */
 .dropdown { z-index: 70; }
-@media (min-width: 901px) {
+@media (min-width: 1151px) {
   /* the two right-most groups open leftwards so they stay on-screen */
   .appbar .nav .nav-item:nth-last-child(-n+2) > .dropdown { left: auto; right: 0; }
+}
+
+/* ---- nav overlap fix: between ~900px and ~1122px the full inline nav collided
+        with the brand + action icons. Collapse to the hamburger panel until the
+        viewport is wide enough (>=1151px) to lay the groups out in a row. ---- */
+@media (max-width: 1150px) {
+  .nav-toggle { display: grid; }
+  .appbar .nav {
+    position: fixed; top: var(--nav-h); left: 0; right: 0; transform: none; margin: 0;
+    flex-direction: column; align-items: stretch; flex-wrap: wrap; min-width: 0;
+    background: var(--surface); border-bottom: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg); padding: 8px; display: none;
+  }
+  .appbar .nav.show { display: flex; }
+  .appbar .nav .nav-item .dropdown {
+    position: static; display: none; box-shadow: none; border: none;
+    padding: 0 0 6px 20px; left: auto; right: auto; min-width: 0;
+  }
+  .appbar .nav .nav-item.open .dropdown { display: flex; }
 }
 
 /* ---- hero masthead: soften the flat near-black into a gentle
