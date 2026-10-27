@@ -540,7 +540,7 @@ async function renderDashboard() {
     <div class="train-banner">
       <div>
         <div class="tb-eyebrow">${icon('book', 'icon-sm')} Learn &amp; grow</div>
-        <h2>Justwords <span class="hl">Training Centre</span><br>— a dedicated portal for Justwordians.</h2>
+        <h2>The Justwords <span class="hl">Collaborative Knowledge Center</span><br>— a dedicated portal for Justwordians.</h2>
         <p>Guides, playbooks and skill-building resources, all in one place. Level up your craft and keep growing with us.</p>
       </div>
       <div class="tb-badge">JW</div>
@@ -659,18 +659,32 @@ function mgrCommentList(data, q) {
   return Array.isArray(v) ? v : (v.text ? [v] : []);
 }
 
+// KPI score = Σ ( Achievement % × Weightage % ) ÷ 100 for the quarter being filed.
+// Each row contributes (achievement × weight / 100) points; weightage that isn't
+// achieved is simply lost, so the score reflects both how much was delivered and how
+// important each KPI is. Rows without a weightage contribute nothing to the total.
 function computeAuto(rows) {
-  let ws = 0, wsum = 0, simpleSum = 0, n = 0;
+  let total = 0, any = false;
   rows.forEach(r => {
-    const res = parseFloat(r[FormCtx.quarter.toLowerCase()]);
-    if (isNaN(res)) return;
+    const ach = parseFloat(r[FormCtx.quarter.toLowerCase()]);
     const w = parseFloat(r.weight);
-    if (!isNaN(w) && w > 0) { ws += res * w; wsum += w; }
-    simpleSum += res; n++;
+    if (isNaN(ach) || isNaN(w) || w <= 0) return;
+    total += (ach * w) / 100;
+    any = true;
   });
-  if (wsum > 0) return Math.round(ws / wsum);
-  if (n > 0) return Math.round(simpleSum / n);
-  return 0;
+  return any ? Math.round(total) : 0;
+}
+
+// Keep the read-only Achievement % column and the auto score in step with whatever
+// is typed into the quarter currently being filed. Shared by every edit path.
+function syncScore() {
+  const data = collectData();
+  const cur = FormCtx.quarter.toLowerCase();
+  view().querySelectorAll('#kpiTable tbody tr[data-row]').forEach(tr => {
+    const r = data.rows[Number(tr.dataset.row)]; if (!r) return;
+    const m = tr.querySelector('[data-achv]'); if (m) m.value = r[cur] || '';
+  });
+  const el = document.getElementById('autoScore'); if (el) el.textContent = computeAuto(data.rows);
 }
 
 function paintForm() {
@@ -770,7 +784,7 @@ function paintForm() {
       <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span></div>
       <div class="tbl-wrap"><table class="kpi-table ${isKPI ? 'kpi-table-quarters' : ''}" id="kpiTable"><thead><tr>
         <th style="min-width:220px">Objective / KPI</th>
-        <th>Goal (Year)</th><th>Weightage&nbsp;%</th>
+        <th>Goal (Year)</th><th>Weightage&nbsp;%</th><th class="achv-head" title="% of the goal achieved in ${f.quarter}">Achievement&nbsp;%</th>
         ${['Q1', 'Q2', 'Q3', 'Q4'].map(Q => {
           const meta = (f.quarters && f.quarters[Q]) || {};
           const curq = Q === f.quarter;
@@ -782,12 +796,19 @@ function paintForm() {
     </div>
 
     <div class="card card-pad">
-      <div class="card-title" style="margin-bottom:14px">${icon('target', 'section-icon')}${f.quarter} Final Score (out of 100)</div>
+      <div class="card-title" style="margin-bottom:14px">${icon('target', 'section-icon')}${f.quarter} Final Score (out of 100)
+        <button class="icon-btn btn-sm score-info-btn" id="scoreInfo" type="button" title="How is this score calculated?">${icon('info', 'icon-sm')}</button></div>
       <div class="score-box">
         <div><div class="lbl muted">Auto-calculated</div><div class="big" id="autoScore">${auto}</div></div>
         <div><div class="lbl muted">Final score</div><input class="kpi-num" id="finalScore" style="font-size:22px;height:44px;width:90px;text-align:center" value="${f.final_score != null ? f.final_score : ''}" ${ro}></div>
         ${editable ? `<button class="btn btn-sm" id="useCalc">${icon('arrow', 'icon-sm')}Use calculated</button>` : ''}
-        <div class="muted" style="max-width:340px">Auto-calculated from ${f.quarter} results weighted by weightage. You can override it in the Final score field.</div>
+        <div class="muted" style="max-width:360px">Auto-calculated as Σ (Achievement&nbsp;% × Weightage&nbsp;%) ÷ 100 for ${f.quarter}. Tap the ${icon('info', 'icon-sm')} to see how. You can override it in the Final score field.</div>
+      </div>
+      <div class="score-info" id="scoreInfoPanel" hidden>
+        <strong>How this score is calculated</strong>
+        <p>For each KPI, its <b>Achievement&nbsp;%</b> (how much of the goal you met this quarter) is multiplied by its <b>Weightage&nbsp;%</b> and divided by 100. Every row is then added together:</p>
+        <p class="score-formula">Score = Σ ( Achievement % × Weightage % ) ÷ 100</p>
+        <p>Example: 80% achieved on a KPI weighted 40% contributes <b>32</b> points; 90% on a 60%-weight KPI adds <b>54</b> — a total of <b>86 / 100</b>. Weightage you don't achieve is lost, so the score reflects both how much you delivered and how important each KPI is. The Achievement&nbsp;% column mirrors the ${f.quarter} column you're filling.</p>
       </div>
     </div>
 
@@ -827,8 +848,8 @@ function renderRows(rows, editable) {
   const cur = FormCtx.quarter.toLowerCase();
   const qmeta = (FormCtx.form && FormCtx.form.quarters) || {};
   const QS = ['q1', 'q2', 'q3', 'q4'];
-  // one more column (del) only when editable; +3 quarter columns vs. the old single
-  const span = editable ? 10 : 9;
+  // one more column (del) only when editable; +3 quarter columns + Achievement %
+  const span = editable ? 11 : 10;
   let html = '';
   let lastCat = null;
   rows.forEach((r, i) => {
@@ -855,6 +876,7 @@ function renderRows(rows, editable) {
       <td><textarea rows="2" data-k="kpi" ${rd}>${esc(r.kpi || '')}</textarea></td>
       <td><input class="kpi-num" data-k="goal" ${rd} value="${esc(r.goal || '')}"></td>
       <td><input class="kpi-num" data-k="weight" ${editable ? '' : 'readonly'} value="${esc(r.weight || '')}"></td>
+      <td><input class="kpi-num kpi-achv" data-achv readonly value="${esc(r[cur] || '')}" title="% of goal achieved in ${FormCtx.quarter} — mirrors the ${FormCtx.quarter} column"></td>
       ${qcells}
       <td><textarea rows="2" data-k="comments" ${editable ? '' : 'readonly'}>${esc(r.comments || '')}</textarea></td>
       <td>${r.doc ? `<a href="/uploads/${esc(r.doc.file)}" target="_blank" class="doc-attached" title="${esc(r.doc.name || 'file')}">${icon('check', 'icon-sm')}${esc(r.doc.name || 'file').slice(0, 16)}</a>` : `<span class="muted">—</span>`}
@@ -901,13 +923,12 @@ function wireForm() {
     if (location.hash.startsWith('#/form/')) { /* keep */ }
     loadForm();
   });
-  // recompute auto score live
-  const recalc = () => {
-    const data = collectData();
-    const a = computeAuto(data.rows);
-    const el = document.getElementById('autoScore'); if (el) el.textContent = a;
-  };
-  view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', recalc));
+  // recompute auto score + Achievement % column live
+  view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', syncScore));
+
+  // (i) button: explain how the score is calculated
+  const scoreInfo = document.getElementById('scoreInfo');
+  if (scoreInfo) scoreInfo.onclick = () => { const p = document.getElementById('scoreInfoPanel'); if (p) p.hidden = !p.hidden; };
 
   const addRow = document.getElementById('addRow');
   if (addRow) addRow.onclick = () => {
@@ -957,9 +978,7 @@ function wireRowEvents() {
     FormCtx.form.data = data;
     view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
     wireRowEvents();
-    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', () => {
-      const d = collectData(); const el = document.getElementById('autoScore'); if (el) el.textContent = computeAuto(d.rows);
-    }));
+    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', syncScore));
   });
   view().querySelectorAll('[data-docdel]').forEach(b => b.onclick = () => {
     const i = Number(b.dataset.docdel);
@@ -968,9 +987,7 @@ function wireRowEvents() {
     FormCtx.form.data = data;
     view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
     wireRowEvents();
-    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', () => {
-      const d = collectData(); const a = document.getElementById('autoScore'); if (a) a.textContent = computeAuto(d.rows);
-    }));
+    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', syncScore));
     toast('Document removed — remember to Save', 'ok');
   });
   view().querySelectorAll('[data-file]').forEach(inp => inp.onchange = async () => {
@@ -987,9 +1004,7 @@ function wireRowEvents() {
       // only appeared after a save + full reload, which looked like it wasn't attaching).
       view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
       wireRowEvents();
-      view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', () => {
-        const d = collectData(); const a = document.getElementById('autoScore'); if (a) a.textContent = computeAuto(d.rows);
-      }));
+      view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', syncScore));
       toast('File attached — remember to Save', 'ok');
     } catch (ex) { toast(ex.message, 'err'); }
   });
@@ -2637,7 +2652,7 @@ function guideSteps(me) {
   const level = accessLevel(me);
   const common = [
     { icon: 'home', title: 'Welcome to the Justwords Portal', body: `Hi ${esc(me.name.split(' ')[0])}! This quick tour shows what you can do here as <strong>${esc(accessLabel(me))}</strong>. Use the ← → buttons to move through it, or Skip any time.` },
-    { icon: 'bell', title: 'Dashboard & announcements', body: 'Your home screen shows company news, the Training Centre, quick links and — for approvers — anything awaiting your action.' },
+    { icon: 'bell', title: 'Dashboard & announcements', body: 'Your home screen shows company news, the Collaborative Knowledge Center, quick links and — for approvers — anything awaiting your action.' },
     { icon: 'grid', title: 'Tools, About & HR Desk', body: 'The top navigation groups everything: Tools & Access, About Us, the HR Desk (handbook, policies, vacancies, referrals & reimbursements) and SOP documents.' },
     { icon: 'chat', title: 'Messages & directory', body: 'Use Messages for internal chat, and the Team Directory to find any colleague and start a direct message.' },
   ];

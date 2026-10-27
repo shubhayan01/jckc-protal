@@ -1044,7 +1044,7 @@ body::before {
 .pw-eye:hover { background: var(--accent-soft); color: var(--accent); }
 .pw-eye.on { color: var(--accent); }
 
-/* ---------------------------------------------------------------- Justwords Training Centre banner */
+/* ---------------------------------------------------------------- Justwords Collaborative Knowledge Center banner */
 .train-banner {
   position: relative; overflow: hidden;
   background: #16181d; color: #fff;
@@ -1405,3 +1405,95 @@ a:hover { color: #000; }
 .doc-remove-btn { padding: 4px 9px; font-size: 11.5px; color: var(--danger); }
 .doc-remove-btn:hover { background: var(--danger-soft); }
 .btn-link-remove { border: none; background: none; color: var(--danger); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0 2px; }
+
+/* ============================================================
+   FINISHING PASS — header clarity, softer dark panels, KPI
+   achievement column & score explainer. Last in the cascade so
+   these win over the earlier brand layers.
+   ============================================================ */
+
+/* ---- top nav: a solid, clearly-separated bar. It was translucent
+        (--glass), so the near-black hero scrolling beneath it bled
+        through and the nav stopped reading as its own bar. Make it
+        near-opaque, blurred, with a firm hairline + soft lift. ---- */
+.appbar {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  -webkit-backdrop-filter: saturate(1.5) blur(12px);
+  backdrop-filter: saturate(1.5) blur(12px);
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow: 0 1px 0 var(--border), 0 6px 20px rgba(20,20,20,.06);
+  z-index: 60;
+}
+[data-theme="dark"] .appbar {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: 0 1px 0 rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.45);
+}
+
+/* ---- top-nav tools: stop the dropdowns running off the right edge
+        and keep them above all page content (fixes the overlap). ---- */
+.dropdown { z-index: 70; }
+@media (min-width: 901px) {
+  /* the two right-most groups open leftwards so they stay on-screen */
+  .appbar .nav .nav-item:nth-last-child(-n+2) > .dropdown { left: auto; right: 0; }
+}
+
+/* ---- hero masthead: soften the flat near-black into a gentle
+        graphite gradient so it no longer reads as a heavy black slab,
+        while staying the page's single dark anchor. ---- */
+.hero {
+  background: linear-gradient(145deg, #30323a 0%, #1d1f25 54%, #141519 100%);
+  border-top: 2px solid var(--hl);
+  box-shadow: var(--shadow-lg);
+}
+[data-theme="dark"] .hero {
+  background: linear-gradient(145deg, #202228 0%, #121317 60%, #0d0e11 100%);
+  border: 1px solid var(--border); border-top: 2px solid var(--hl);
+}
+
+/* ---- Knowledge Center banner: was a second near-black block, which
+        made the page feel heavy. Reworked into a warm, light card with
+        a yellow-highlighter title — on-brand and far lighter. ---- */
+.train-banner {
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 62%);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+.train-banner .tb-eyebrow { color: var(--warn); }
+.train-banner h2 { color: var(--text); }
+.train-banner h2 .hl {
+  color: var(--text);
+  background: linear-gradient(transparent 60%, var(--hl) 60%);
+  padding: 0 2px; border-radius: 2px;
+}
+.train-banner p { color: var(--text-2); }
+.train-banner .tb-badge { background: var(--hl); color: #16181d; box-shadow: var(--shadow); }
+
+/* ---- KPI: Achievement % column reads as a derived / read-only value ---- */
+.achv-head { color: var(--text-2); }
+.kpi-achv {
+  background: var(--surface-2); color: var(--text); font-weight: 650;
+  cursor: default; border-color: var(--border);
+}
+.kpi-achv:focus { outline: none; box-shadow: none; }
+
+/* ---- KPI: score (i) explainer ---- */
+.score-info-btn {
+  width: 26px; height: 26px; margin-left: 2px; color: var(--text-3);
+  vertical-align: middle; border-radius: 7px;
+}
+.score-info-btn:hover { color: var(--accent); background: var(--accent-soft); }
+.score-info {
+  margin-top: 14px; padding: 14px 16px; max-width: 680px;
+  background: var(--accent-soft); border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--hl-strong); border-radius: 10px;
+  font-size: 13.5px; color: var(--text);
+}
+.score-info strong { display: block; margin-bottom: 4px; font-family: var(--font-display); }
+.score-info p { margin: 8px 0 0; color: var(--text-2); line-height: 1.5; }
+.score-info b { color: var(--text); }
+.score-formula {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; color: var(--text) !important; font-weight: 600;
+  display: inline-block; letter-spacing: .2px;
+}
