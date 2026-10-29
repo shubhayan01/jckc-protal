@@ -339,8 +339,9 @@ function firstName(name) {
   return String(name).trim().split(/\s+/)[0].replace(/[^A-Za-z]/g, '') || 'User';
 }
 function defaultPassword(name) {
-  const f = firstName(name);
-  return f.charAt(0).toUpperCase() + f.slice(1) + '@justword2026';
+  // Uniform default credential for all seeded users (test/staging convenience).
+  // Everyone signs in with this and is no longer force-prompted to reset.
+  return 'Test1234';
 }
 function deriveDepartment(desig) {
   const d = (desig || '').toLowerCase();
@@ -384,7 +385,7 @@ function seed() {
     const pass = bcrypt.hashSync(defaultPassword(e.name), 10);
     const r = roleFor(e.designation) || 'employee';
     const info = insert.run(
-      e.ecode, e.name.trim(), e.designation, email, pass, 1, r,
+      e.ecode, e.name.trim(), e.designation, email, pass, 0, r,
       deriveDepartment(e.designation), null, null
     );
     byName[e.name.trim().toLowerCase()] = { id: Number(info.lastInsertRowid), raw: e };
@@ -408,7 +409,7 @@ function seed() {
   db.prepare(`INSERT INTO users (ecode,name,designation,email,password,must_reset,role,department,manager_id)
     VALUES (?,?,?,?,?,?,?,?,?)`).run(
     'JW999', 'Test Associate', 'QA Test Account', 'test@justwords.in',
-    bcrypt.hashSync('Test@1234', 10), 0, 'employee', 'Content',
+    bcrypt.hashSync('Test1234', 10), 0, 'employee', 'Content',
     saurav ? saurav.id : null
   );
 
