@@ -854,7 +854,12 @@ function renderRows(rows, editable) {
   let lastCat = null;
   rows.forEach((r, i) => {
     if (r.cat !== lastCat) {
-      html += `<tr class="kpi-cat"><td colspan="${span}">${esc(r.cat)}</td></tr>`;
+      // Mandatory Team Objectives gets a "+" so more company-wide rows can be added
+      // (the two seeded rows stay locked; added ones are editable and removable).
+      const catAdd = (editable && r.cat === 'Mandatory Team Objectives')
+        ? `<button class="btn btn-sm cat-add-btn" data-addcat="Mandatory Team Objectives" title="Add a Mandatory Team Objectives row">${icon('plus', 'icon-sm')}Add row</button>`
+        : '';
+      html += `<tr class="kpi-cat"><td colspan="${span}"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px">${esc(r.cat)}${catAdd}</div></td></tr>`;
       lastCat = r.cat;
     }
     const rd = r.locked ? 'readonly' : (editable ? '' : 'readonly');
@@ -972,6 +977,20 @@ function wireForm() {
 }
 
 function wireRowEvents() {
+  // "+" on a category header (Mandatory Team Objectives) — insert a new editable
+  // row at the end of that category block.
+  view().querySelectorAll('[data-addcat]').forEach(b => b.onclick = () => {
+    const cat = b.dataset.addcat;
+    const data = collectData();
+    let idx = -1;
+    data.rows.forEach((r, i) => { if (r.cat === cat) idx = i; });
+    const newRow = { cat, type: cat, kpi: '', goal: '', weight: '' };
+    if (idx >= 0) data.rows.splice(idx + 1, 0, newRow); else data.rows.push(newRow);
+    FormCtx.form.data = data;
+    view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
+    wireRowEvents();
+    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', syncScore));
+  });
   view().querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
     const data = collectData();
     data.rows.splice(Number(b.dataset.del), 1);
