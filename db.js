@@ -404,16 +404,11 @@ function seed() {
   const markMgr = db.prepare("UPDATE users SET is_manager=1, role=CASE WHEN role='employee' THEN 'manager' ELSE role END WHERE id=?");
   for (const row of managerIds) markMgr.run(row.manager_id);
 
-  // Test user (employee reporting to Saurav Jha so the full approval chain works).
-  const saurav = db.prepare("SELECT id FROM users WHERE name LIKE 'Saurav%'").get();
-  db.prepare(`INSERT INTO users (ecode,name,designation,email,password,must_reset,role,department,manager_id)
-    VALUES (?,?,?,?,?,?,?,?,?)`).run(
-    'JW999', 'Test Associate', 'QA Test Account', 'test@justwords.in',
-    bcrypt.hashSync('Test1234', 10), 0, 'employee', 'Content',
-    saurav ? saurav.id : null
-  );
+  // NOTE: the old "Test Associate" (JW999) QA account is no longer seeded, so a
+  // fresh database carries only the real roster. Remove it from existing databases
+  // with scripts/clean-test-data.js.
 
-  console.log(`Seeded ${emps.length} employees + 1 test user.`);
+  console.log(`Seeded ${emps.length} employees.`);
   seedPages();
   seedVacancies();
 }
@@ -467,8 +462,18 @@ function seedAnnouncements() {
     'Have an idea to make Justwords better? Share feedback or concerns with HR — anonymously if you prefer.', 0);
 }
 
-// Allow `node db.js --reseed` to wipe and rebuild (dev convenience).
+// Allow `node db.js --reseed` to wipe and rebuild. This DESTROYS all data
+// (KPIs, appraisals, messages, everything), so it is guarded: it refuses unless
+// you ALSO pass --force or set RESEED_CONFIRM=yes. A plain accidental run — or a
+// deploy that somehow invokes it — is a no-op, never a silent wipe.
 if (require.main === module && process.argv.includes('--reseed')) {
+  const confirmed = process.argv.includes('--force') || process.env.RESEED_CONFIRM === 'yes';
+  if (!confirmed) {
+    console.error('\n⛔  Refusing to reseed: this would DELETE ALL DATA.');
+    console.error('    If you really want a full wipe + rebuild, re-run with --force:');
+    console.error('        node db.js --reseed --force\n');
+    process.exit(1);
+  }
   for (const t of ['messages', 'channel_reads', 'channel_members', 'channels', 'form_windows', 'uploads', 'approvals', 'forms', 'leaves', 'suggestions', 'referrals', 'reimbursements', 'vacancies', 'announcements', 'asset_audits', 'assets', 'pages', 'users']) {
     try { db.exec(`DELETE FROM ${t};`); } catch (_) {}
   }
