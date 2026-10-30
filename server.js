@@ -22,7 +22,10 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // Trust the platform proxy (Render/Heroku) so secure cookies work behind TLS termination.
 if (IS_PROD) app.set('trust proxy', 1);
 
-app.use(express.json({ limit: '2mb' }));
+// Normal API bodies are capped at 2mb. The backup-restore route is the one exception
+// (a full DB can be larger), so it's skipped here and parsed by its own 64mb parser.
+const jsonSmall = express.json({ limit: '2mb' });
+app.use((req, res, next) => (req.path === '/api/admin/backup/import' ? next() : jsonSmall(req, res, next)));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'justwords-portal-secret-change-me',
@@ -1085,6 +1088,95 @@ app.post('/api/chat/channels/:id/read', requireAuth, (req, res) => {
   db.prepare('INSERT OR REPLACE INTO channel_reads (user_id,channel_id,last_read) VALUES (?,?,datetime(\'now\'))').run(req.user.id, ch.id);
   res.json({ ok: true });
 });
+
+// ---------------------------------------------------------------- Backup / Restore console
+// A standalone, password-gated page (separate from the normal portal login) that can
+// export the ENTIRE database to a JSON file and restore it back. Meant for the owner to
+// keep their own backups so everything (KPIs, appraisals, users, messages…) can be
+// recovered if the data volume is ever lost. The password defaults to 'admin123' but can
+// be overridden with the ADMIN_BACKUP_PASSWORD env var — do change it in production.
+// Note: physical uploaded files aren't in the DB, so the JSON holds their records but not
+// the file bytes.
+const BACKUP_ADMIN_USER = process.env.ADMIN_BACKUP_USER || 'admin';
+const BACKUP_ADMIN_PASSWORD = process.env.ADMIN_BACKUP_PASSWORD || 'admin123';
+const bigJson = express.json({ limit: '64mb' }); // restore payloads can be large
+
+function listTables() {
+  return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    .all().map(r => r.name);
+}
+function requireBackupAdmin(req, res, next) {
+  if (!req.session.backupAdmin) return res.status(401).json({ error: 'Admin login required' });
+  next();
+}
+
+app.get('/api/admin/backup/status', (req, res) => res.json({ loggedIn: !!req.session.backupAdmin }));
+
+app.post('/api/admin/backup/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const userOk = !username || String(username) === BACKUP_ADMIN_USER; // username optional
+  if (!userOk || String(password || '') !== BACKUP_ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'Wrong admin username or password' });
+  }
+  req.session.backupAdmin = true;
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/backup/logout', (req, res) => { req.session.backupAdmin = false; res.json({ ok: true }); });
+
+// Download everything as one JSON document.
+app.get('/api/admin/backup/export', requireBackupAdmin, (req, res) => {
+  const dump = {
+    meta: { app: 'JCKC', kind: 'portal-backup', version: 1, created_at: new Date().toISOString() },
+    tables: {},
+  };
+  for (const t of listTables()) {
+    try { dump.tables[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch (_) { dump.tables[t] = []; }
+  }
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="jckc-backup-${stamp}.json"`);
+  res.send(JSON.stringify(dump, null, 2));
+});
+
+// Restore from a previously exported JSON document. Replaces the contents of every table
+// present in the backup, all-or-nothing (rolls back on any error).
+app.post('/api/admin/backup/import', requireBackupAdmin, bigJson, (req, res) => {
+  const payload = req.body;
+  if (!payload || typeof payload !== 'object' || !payload.tables || typeof payload.tables !== 'object') {
+    return res.status(400).json({ error: 'That file is not a valid JCKC backup (no "tables").' });
+  }
+  const existing = new Set(listTables());
+  const toRestore = Object.keys(payload.tables).filter(t => existing.has(t));
+  if (!toRestore.length) return res.status(400).json({ error: 'Backup has no tables that match this database.' });
+
+  let totalRows = 0;
+  try {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    db.exec('BEGIN;');
+    for (const t of toRestore) {
+      db.exec(`DELETE FROM ${t};`);
+      const rows = Array.isArray(payload.tables[t]) ? payload.tables[t] : [];
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        if (!cols.length) continue;
+        const sql = `INSERT INTO ${t} (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`;
+        db.prepare(sql).run(...cols.map(c => (row[c] === undefined ? null : row[c])));
+        totalRows++;
+      }
+    }
+    db.exec('COMMIT;');
+  } catch (ex) {
+    try { db.exec('ROLLBACK;'); } catch (_) {}
+    return res.status(500).json({ error: 'Restore failed — no changes applied. ' + ex.message });
+  } finally {
+    try { db.exec('PRAGMA foreign_keys = ON;'); } catch (_) {}
+  }
+  res.json({ ok: true, tables: toRestore.length, rows: totalRows });
+});
+
+// Standalone console page (served before the SPA fallback so it isn't swallowed).
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
 // ---------------------------------------------------------------- SPA fallback
 app.use(express.static(path.join(__dirname, 'public')));

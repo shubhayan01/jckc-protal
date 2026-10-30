@@ -38,6 +38,7 @@ Service → **Variables**:
 | `NODE_ENV`       | `production`                                       |
 | `DATA_DIR`       | `/data`  (same as the volume mount path)           |
 | `SESSION_SECRET` | a long random string (example below)               |
+| `ADMIN_BACKUP_PASSWORD` | password for the `/admin` backup console (defaults to `admin123` — **change it**) |
 
 A freshly generated secret you can paste (or make your own):
 
@@ -73,6 +74,18 @@ seeded credentials and are prompted to reset the password on first sign-in.
   It is guarded and now **refuses** unless you also pass `--force`
   (`node db.js --reseed --force`) or set `RESEED_CONFIRM=yes`. Do not add that flag or
   var to the Railway service — a normal deploy must never carry it.
+
+### Backup & restore console (`/admin`)
+
+Visit **`https://<your-domain>/admin`** for a standalone, password-gated console (user
+`admin`, password from `ADMIN_BACKUP_PASSWORD`, default `admin123`). It can:
+
+- **Download all data** as one JSON file (every table — employees, KPIs, appraisals,
+  messages, assets…). Keep it safe: it holds personal data and password hashes.
+- **Restore** from a JSON backup, replacing all current data (all-or-nothing).
+
+This is your recovery net if the volume is ever lost. It does not include the bytes of
+uploaded files, only their database records. Change the default password in production.
 
 ### One-time cleanup: remove test data, keep the roster
 

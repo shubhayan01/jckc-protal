@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>JCKC — Backup Console</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --surface:#ffffff; --ink:#15171c; --muted:#6b7280;
+    --line:#e5e7eb; --accent:#ffcf3f; --accent-ink:#1a1400;
+    --ok:#1f9d57; --ok-soft:#e7f6ee; --danger:#d64b3f; --danger-soft:#fbe7e4;
+    --radius:14px; --shadow:0 10px 30px rgba(20,23,28,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
+  .wrap{width:100%;max-width:560px}
+  .brand{display:flex;align-items:center;gap:12px;margin:8px 2px 22px}
+  .logo{width:40px;height:40px;border-radius:10px;background:var(--accent);
+    display:grid;place-items:center;font-weight:800;color:var(--accent-ink);font-size:20px}
+  .brand h1{font-family:Georgia,"Times New Roman",serif;font-size:22px;margin:0;font-weight:700}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:26px}
+  h2{font-family:Georgia,"Times New Roman",serif;font-size:19px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 18px;line-height:1.5}
+  label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+  input[type=text],input[type=password]{width:100%;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;font-size:15px;background:#fff;color:var(--ink)}
+  input:focus{outline:2px solid var(--accent);border-color:var(--accent)}
+  .field{margin-bottom:14px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:600;
+    padding:11px 16px;border-radius:10px;cursor:pointer;font-size:14.5px;width:100%}
+  .btn:hover{background:#f9fafb}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .btn.primary:hover{filter:brightness(.96)}
+  .btn.danger{background:#fff;border-color:var(--danger);color:var(--danger)}
+  .btn.danger:hover{background:var(--danger-soft)}
+  .row{margin-top:14px}
+  .hr{height:1px;background:var(--line);margin:22px 0}
+  .msg{margin-top:14px;padding:11px 13px;border-radius:10px;font-size:13.5px;display:none}
+  .msg.show{display:block}
+  .msg.ok{background:var(--ok-soft);color:var(--ok)}
+  .msg.err{background:var(--danger-soft);color:var(--danger)}
+  .note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .hidden{display:none}
+  .pill{display:inline-block;background:var(--accent);color:var(--accent-ink);
+    font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px}
+  code{background:#f0f2f5;padding:1px 6px;border-radius:5px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">J</div>
+    <div><h1>Backup Console</h1><p>Justwords Collaborative Knowledge Center</p></div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="card" id="loginCard">
+    <h2>Admin sign in</h2>
+    <p class="sub">Restricted area for taking and restoring full data backups.</p>
+    <div class="field">
+      <label for="u">Username</label>
+      <input type="text" id="u" value="admin" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="p">Password</label>
+      <input type="password" id="p" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn primary" id="loginBtn">Sign in</button>
+    <div class="msg err" id="loginMsg"></div>
+  </div>
+
+  <!-- CONSOLE -->
+  <div class="card hidden" id="consoleCard">
+    <h2>Data backup <span class="pill">signed in</span></h2>
+    <p class="sub">Download the entire portal database as one JSON file, or restore everything from a backup you saved earlier.</p>
+
+    <button class="btn primary" id="downloadBtn">⬇  Download all data (JSON)</button>
+    <p class="note">Includes every table — employees, KPIs, appraisals, approvals, messages, assets and more. Keep this file somewhere safe; it contains personal data and password hashes.</p>
+
+    <div class="hr"></div>
+
+    <h2 style="font-size:17px">Restore from backup</h2>
+    <p class="sub" style="margin-bottom:12px">Replaces all current data with the contents of a backup file. Use only to recover lost data.</p>
+    <div class="field">
+      <label for="file">Backup file (<code>.json</code>)</label>
+      <input type="text" id="fileName" readonly placeholder="No file chosen" style="cursor:pointer;background:#f9fafb">
+      <input type="file" id="file" accept="application/json,.json" class="hidden">
+    </div>
+    <button class="btn danger" id="restoreBtn">↺  Restore (overwrites everything)</button>
+
+    <div class="msg" id="actionMsg"></div>
+
+    <div class="hr"></div>
+    <button class="btn" id="logoutBtn">Sign out</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var loginCard=document.getElementById('loginCard'), consoleCard=document.getElementById('consoleCard');
+  var loginMsg=document.getElementById('loginMsg'), actionMsg=document.getElementById('actionMsg');
+
+  function show(el,type,text){el.className='msg show '+type;el.textContent=text;}
+  function hide(el){el.className='msg';}
+  function enterConsole(){loginCard.classList.add('hidden');consoleCard.classList.remove('hidden');}
+  function enterLogin(){consoleCard.classList.add('hidden');loginCard.classList.remove('hidden');}
+
+  async function api(url,opts){
+    var res=await fetch(url,Object.assign({headers:{'Content-Type':'application/json'}},opts||{}));
+    var data=null; try{data=await res.json();}catch(e){}
+    if(!res.ok) throw new Error((data&&data.error)||('HTTP '+res.status));
+    return data;
+  }
+
+  // Resume an existing admin session.
+  fetch('/api/admin/backup/status').then(function(r){return r.json();}).then(function(s){
+    if(s&&s.loggedIn) enterConsole();
+  }).catch(function(){});
+
+  document.getElementById('loginBtn').onclick=async function(){
+    hide(loginMsg);
+    try{
+      await api('/api/admin/backup/login',{method:'POST',body:JSON.stringify({
+        username:document.getElementById('u').value.trim(),
+        password:document.getElementById('p').value
+      })});
+      document.getElementById('p').value='';
+      enterConsole();
+    }catch(e){show(loginMsg,'err',e.message);}
+  };
+  document.getElementById('p').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('loginBtn').click();});
+
+  document.getElementById('downloadBtn').onclick=function(){
+    // GET with the session cookie → browser downloads the attachment directly.
+    window.location='/api/admin/backup/export';
+    show(actionMsg,'ok','Your download should start now. Save the file somewhere safe.');
+  };
+
+  var fileInput=document.getElementById('file'), fileName=document.getElementById('fileName');
+  fileName.onclick=function(){fileInput.click();};
+  fileInput.onchange=function(){fileName.value=fileInput.files.length?fileInput.files[0].name:'';};
+
+  document.getElementById('restoreBtn').onclick=function(){
+    hide(actionMsg);
+    var f=fileInput.files[0];
+    if(!f){show(actionMsg,'err','Choose a backup .json file first.');return;}
+    if(!confirm('This will DELETE all current data and replace it with the backup file. This cannot be undone. Continue?'))return;
+    var reader=new FileReader();
+    reader.onload=async function(){
+      var payload;
+      try{payload=JSON.parse(reader.result);}catch(e){show(actionMsg,'err','That file is not valid JSON.');return;}
+      show(actionMsg,'ok','Restoring… please wait.');
+      try{
+        var r=await api('/api/admin/backup/import',{method:'POST',body:JSON.stringify(payload)});
+        show(actionMsg,'ok','Restored '+r.rows+' rows across '+r.tables+' tables. Data is back.');
+      }catch(e){show(actionMsg,'err',e.message);}
+    };
+    reader.readAsText(f);
+  };
+
+  document.getElementById('logoutBtn').onclick=async function(){
+    try{await api('/api/admin/backup/logout',{method:'POST'});}catch(e){}
+    enterLogin();
+  };
+})();
+</script>
+</body>
+</html>
