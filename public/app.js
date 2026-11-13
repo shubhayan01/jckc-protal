@@ -128,6 +128,8 @@ const NAV = [
   { label: 'About Us', icon: 'building', items: [
     { t: 'Vision & Mission', r: '#/page/vision', i: 'target' },
     { t: 'Company Documents', r: '#/page/company-documents', i: 'file' },
+    { t: 'Company Performance', r: '#/page/company-performance', i: 'chart' },
+    { t: 'Testimonials', r: '#/page/testimonials', i: 'users' },
   ] },
   { label: 'HR Desk', icon: 'brief', items: [
     { t: 'Handbook', r: '#/page/handbook', i: 'book' },
@@ -138,11 +140,17 @@ const NAV = [
     { t: 'Reimbursements', r: '#/reimbursements', i: 'file' },
   ] },
   { label: 'SOP Documents', icon: 'file', items: [
+    { t: 'Business Development', r: '#/page/sop-bd', i: 'brief' },
     { t: 'HR', r: '#/page/sop-hr', i: 'users' },
     { t: 'SEO', r: '#/page/sop-seo', i: 'seo' },
     { t: 'Content', r: '#/page/sop-content', i: 'pen' },
     { t: 'Web Dev', r: '#/page/sop-webdev', i: 'wrench' },
     { t: 'Automation', r: '#/page/sop-automation', i: 'settings' },
+  ] },
+  { label: 'Knowledge', icon: 'book', items: [
+    { t: 'Knowledge Center', r: '#/page/knowledge-center', i: 'book' },
+    { t: 'Members', r: '#/page/members', i: 'users' },
+    { t: 'News & Events', r: '#/page/news-events', i: 'bell' },
   ] },
   { label: 'Performance', icon: 'chart', items: [
     { t: 'KPI Tracker', r: '#/performance/kpi', i: 'chart' },

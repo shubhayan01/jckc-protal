@@ -59,10 +59,15 @@ const MAP = [
   ['TOP MENU/JW HR Desk/JW HR Handbook',                     'handbook'],
   ['TOP MENU/JW HR Desk/JW Policies and Holidays list',      'policies'],
   ['TOP MENU/JW HR Desk/JW Schemes',                         'schemes'],
+  ['TOP MENU/JW Performance Monitoring',                     'company-performance'],
   ['TOP MENU/JW SOP Documents/JW SOP - HR & Admin',          'sop-hr'],
   ['TOP MENU/JW SOP Documents/JW SOP - Content Operations',  'sop-content'],
-  ['TOP MENU/JW SOP Documents/JW SOP - Business Development', 'sop-content'],
+  ['TOP MENU/JW SOP Documents/JW SOP - Business Development', 'sop-bd'],
   ['TOP MENU/JW SOP Documents/JW SOP - Digital Mktg Operations', 'sop-seo'],
+  ['SIDE MENU/JW JCKC Members',                              'members'],
+  ['SIDE MENU/JW Knowledge Center',                          'knowledge-center'],
+  ['SIDE MENU/JW News & Announcements',                      'news-events'],
+  ['Other Content',                                          'testimonials'],
 ];
 
 function slugFor(rel) {

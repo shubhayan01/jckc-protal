@@ -429,12 +429,18 @@ function seedPages() {
       'Leave policy, POSH policy, IT & data security policy, and remote-work policy. All associates are expected to comply with the latest published versions.'],
     ['leave', 'hr', 'Leave', 'Apply for leave and track approvals from the Leave module.'],
     ['vacancies', 'hr', 'Vacancies', 'Open positions across Justwords. Refer great people — referral bonuses apply.'],
+    ['company-performance', 'about', 'Company Performance', 'Company-wide business performance updates and monitoring shared by leadership.'],
+    ['testimonials', 'about', 'Testimonials', 'What our clients say about working with Justwords.'],
+    ['sop-bd', 'sop', 'SOP — Business Development', 'Sales process, proposals, RFPs, pricing, onboarding and the BD toolkit.'],
     ['sop-hr', 'sop', 'SOP — HR', 'Standard operating procedures for HR: onboarding, attendance, appraisal cycles, exit process.'],
     ['sop-seo', 'sop', 'SOP — SEO', 'Keyword research, on-page checklist, technical audit cadence, reporting standards.'],
     ['sop-content', 'sop', 'SOP — Content', 'Briefing, drafting, editing, QA and publishing workflow with quality gates.'],
     ['sop-webdev', 'sop', 'SOP — Web Dev', 'Ticket intake, staging discipline, QA checklist, deployment and rollback steps.'],
     ['sop-automation', 'sop', 'SOP — Automation', 'Workflow intake, tooling standards, secrets handling, monitoring and handover.'],
     ['tools', 'tools', 'Tools', 'The stack Justwords associates use day to day — access is provisioned by IT/HR Admin.'],
+    ['knowledge-center', 'knowledge', 'Knowledge Center', 'Internal training (JDMET, JEET), competitor intelligence and industry updates.'],
+    ['members', 'knowledge', 'JCKC Members', 'The Justwords Collaborative Knowledge Center member directory.'],
+    ['news-events', 'knowledge', 'News & Events', 'Agendas, event notes and shared announcements.'],
   ];
   const ins = db.prepare('INSERT OR IGNORE INTO pages (slug,section,title,body) VALUES (?,?,?,?)');
   for (const p of pages) ins.run(...p);
@@ -482,6 +488,10 @@ if (require.main === module && process.argv.includes('--reseed')) {
 }
 
 seed();
+// Runs every startup. INSERT OR IGNORE, so it only adds pages that don't exist
+// yet (e.g. new sections on an already-seeded DB) and never overwrites edited
+// page bodies or touches attached files.
+seedPages();
 seedAnnouncements();
 seedChannels();
 
