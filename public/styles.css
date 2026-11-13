@@ -1468,18 +1468,45 @@ a:hover { color: #000; }
   .appbar .nav .nav-item.open .dropdown { display: flex; }
 }
 
-/* ---- hero masthead: soften the flat near-black into a gentle
-        graphite gradient so it no longer reads as a heavy black slab,
-        while staying the page's single dark anchor. ---- */
+/* ---- hero masthead: soft frosted-glass pale-yellow / off-white panel
+        (brand white–yellow–black). Light surface, dark text and a yellow
+        highlight hairline on top — replaces the old dark slab. Dark theme
+        keeps a warm translucent panel so text stays readable. ---- */
 .hero {
-  background: linear-gradient(145deg, #30323a 0%, #1d1f25 54%, #141519 100%);
-  border-top: 2px solid var(--hl);
-  box-shadow: var(--shadow-lg);
+  background:
+    linear-gradient(150deg, rgba(254,249,231,.90) 0%, rgba(250,242,208,.86) 55%, rgba(253,247,224,.90) 100%);
+  border: 1px solid rgba(245,197,24,.40);
+  border-top: 3px solid var(--hl);
+  box-shadow: 0 16px 40px rgba(176,146,28,.14), inset 0 1px 0 rgba(255,255,255,.65);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  backdrop-filter: blur(12px) saturate(1.08);
+  color: #1b1a17;
 }
+.hero .eyebrow { color: #9a7b0f; }
+.hero h1 { color: #1b1a17; }
+.hero .hero-sub { color: #55503f; }
+.hero .hero-meta, .hero .hero-meta .d1 { color: #1b1a17; }
+.hero .hero-meta .d2 { color: #9a7b0f; }
+.hero::before { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.55), transparent 62%); }
+.hero::after  { background: radial-gradient(circle at 50% 50%, rgba(245,197,24,.22), transparent 66%); }
+/* the non-solid glass button needs dark ink on the light panel; the gold
+   "solid" CTA is left untouched */
+.hero .btn-glass:not(.solid) { background: rgba(28,26,23,.05); border-color: rgba(28,26,23,.22); color: #1b1a17; }
+.hero .btn-glass:not(.solid):hover { background: rgba(28,26,23,.10); }
+
 [data-theme="dark"] .hero {
-  background: linear-gradient(145deg, #202228 0%, #121317 60%, #0d0e11 100%);
-  border: 1px solid var(--border); border-top: 2px solid var(--hl);
+  background: linear-gradient(150deg, rgba(60,54,30,.55) 0%, rgba(44,40,22,.50) 60%, rgba(54,48,26,.55) 100%);
+  border: 1px solid rgba(245,197,24,.28); border-top: 3px solid var(--hl);
+  box-shadow: var(--shadow-lg);
+  color: #f3eedd;
 }
+[data-theme="dark"] .hero .eyebrow { color: var(--gold); }
+[data-theme="dark"] .hero h1 { color: #ffffff; }
+[data-theme="dark"] .hero .hero-sub { color: rgba(255,255,255,.82); }
+[data-theme="dark"] .hero .hero-meta, [data-theme="dark"] .hero .hero-meta .d1 { color: #ffffff; }
+[data-theme="dark"] .hero .hero-meta .d2 { color: rgba(245,197,24,.9); }
+[data-theme="dark"] .hero .btn-glass:not(.solid) { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.26); color: #fff; }
+[data-theme="dark"] .hero .btn-glass:not(.solid):hover { background: rgba(255,255,255,.2); }
 
 /* ---- Knowledge Center banner: was a second near-black block, which
         made the page feel heavy. Reworked into a warm, light card with
