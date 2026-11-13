@@ -181,8 +181,8 @@ function renderShell(content) {
   <header class="appbar">
     <button class="icon-btn nav-toggle" id="navToggle">${icon('menu')}</button>
     <a href="#/dashboard" class="brand">
-      <span class="logo">JW</span>
-      <span>Justwords<small>Collaborative Knowledge Center</small></span>
+      <img class="brand-logo" src="/img/logo.png" alt="Justwords">
+      <span><small>Collaborative Knowledge Center</small></span>
     </a>
     <nav class="nav" id="mainNav">${navHTML}</nav>
     <div class="spacer"></div>
@@ -338,7 +338,7 @@ function renderLogin() {
         ${LOGIN_SLIDES.map((src, i) => `<div class="auth-slide ${i === 0 ? 'on' : ''}" style="background-image:url('${esc(src)}')"></div>`).join('')}
         <div class="auth-scrim"></div>
       </div>
-      <div class="mark"><span class="logo" style="width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.14);display:grid;place-items:center;">JW</span> Justwords</div>
+      <div class="mark"><img class="brand-logo" src="/img/logo.png" alt="Justwords" style="height:32px"></div>
       <div>
         <h1>Collaborative<br>Knowledge Center</h1>
         <p>Together we create content-driven, transformational digital journeys for our customers — and a single home for KPIs, appraisals, policies and the people behind the work.</p>

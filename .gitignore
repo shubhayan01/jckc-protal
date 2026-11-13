@@ -13,6 +13,12 @@ portal.db-wal
 uploads/*
 !uploads/.gitkeep
 
+# Local source assets — large/raw; served copies live in public/.
+# The document library is uploaded to the server via scripts/bulk-upload-content.js,
+# never committed (it is ~1 GB). The cropped logo lives at public/img/logo.png.
+JCKC Website Content*/
+LOGO! (1).jpg
+
 # Logs
 *.log
 
