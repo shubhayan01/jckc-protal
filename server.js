@@ -42,7 +42,9 @@ const upload = multer({
       cb(null, Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '_' + safe);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  // Internal documents (SOP decks, image-heavy Word files) can be large, so the
+  // cap is generous. Multer streams to disk, so this does not buffer in memory.
+  limits: { fileSize: 200 * 1024 * 1024 },
 });
 
 // ---------------------------------------------------------------- helpers
@@ -1179,6 +1181,17 @@ app.post('/api/admin/backup/import', requireBackupAdmin, bigJson, (req, res) => 
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
 // ---------------------------------------------------------------- SPA fallback
+// Turn Multer upload errors (e.g. file over the size limit) into a clean JSON
+// response instead of a generic HTTP 500, so the UI/importer can show why.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'File is too large (max 200 MB).' : ('Upload error: ' + err.message);
+    return res.status(413).json({ error: msg });
+  }
+  if (err) return res.status(500).json({ error: err.message || 'Server error' });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
