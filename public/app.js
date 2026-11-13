@@ -871,7 +871,10 @@ function renderRows(rows, editable) {
       const meta = qmeta[Q] || {};
       const isCur = qk === cur;
       const val = isCur ? (r[qk] || '') : (Array.isArray(meta.results) ? (meta.results[i] || '') : '');
-      const canEditCell = isCur && editable && !r.locked;
+      // Locked rows (seeded Mandatory Team Objectives) keep their KPI text & goal
+      // fixed, but their quarterly achievement results must still be fillable —
+      // so the current-quarter cell stays editable regardless of r.locked.
+      const canEditCell = isCur && editable;
       const cls = 'kpi-num q-cell' + (isCur ? ' q-cell-current' : '') + (meta.locked ? ' q-cell-done' : '');
       return `<td class="q-td${isCur ? ' q-td-current' : ''}">
         <input class="${cls}" ${isCur ? `data-k="${qk}"` : ''} ${canEditCell ? '' : 'readonly'} value="${esc(val)}" title="${Q}${meta.locked ? ' · locked' : isCur ? ' · now filing' : ''}">
