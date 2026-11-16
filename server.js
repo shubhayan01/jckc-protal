@@ -322,41 +322,54 @@ function carryForwardData(type, userId, fy, newQuarter) {
   return {}; // nothing to carry — client seeds defaults
 }
 
-// Share KPI objective definitions across all four quarters of a year. The objective
-// rows (category, type, text, goal, weightage, locked flag) are one shared set, so an
-// objective added or edited in any quarter shows up in every quarter. Only the objective
-// DEFINITION is propagated — each quarter keeps its OWN Achievement %, per-row comments
-// and support doc. Locked quarters (approved / in review) are left untouched so signed-off
-// history and forms mid-approval are never rewritten. Absent quarters inherit the set when
-// first opened via carryForwardData. Matching is by objective text (robust to re-ordering)
-// with a positional fallback — the same heuristic used to align quarter results.
+// Share KPI objective definitions across all four quarters of a year, so an objective
+// added or edited in any quarter also shows up in the others. This is ADDITIVE and
+// non-destructive on purpose: it only ADDS missing objectives and UPDATES the definition
+// fields (category, type, goal, weightage, locked flag) of objectives matched by text.
+// It never deletes a sibling quarter's rows, never removes anyone's Achievement %, comments
+// or support doc, and never propagates an empty set — so it can only ever add data, not lose
+// it. Locked quarters (approved / in review) are skipped entirely. (If removing an objective
+// from one quarter should also remove it everywhere, that must be done as a separate,
+// explicit action — this function will not do it.)
 function syncObjectivesAcrossQuarters(srcForm, srcData) {
   if (!srcForm || srcForm.type !== 'kpi') return;
-  const defs = (Array.isArray(srcData && srcData.rows) ? srcData.rows : []).map(r => ({
-    cat: r.cat, type: r.type, kpi: r.kpi, goal: r.goal, weight: r.weight, locked: r.locked,
-  }));
+  const norm = t => String(t || '').trim().toLowerCase();
+  // Only real objective rows (named, or a locked mandatory row) are propagated.
+  const defs = (Array.isArray(srcData && srcData.rows) ? srcData.rows : [])
+    .filter(r => r && (norm(r.kpi) || r.locked))
+    .map(r => ({ cat: r.cat, type: r.type, kpi: r.kpi, goal: r.goal, weight: r.weight, locked: r.locked }));
+  if (!defs.length) return; // nothing meaningful to share — never wipe siblings
   const sibs = db.prepare("SELECT * FROM forms WHERE type='kpi' AND user_id=? AND fy=? AND quarter!=?")
     .all(srcForm.user_id, srcForm.fy, srcForm.quarter);
   const upd = db.prepare("UPDATE forms SET data=?, updated_at=datetime('now') WHERE id=?");
   for (const s of sibs) {
-    if (s.status === 'approved' || s.status === 'in_review') continue; // never rewrite locked history
+    if (s.status === 'approved' || s.status === 'in_review') continue; // never touch locked history
     let sd; try { sd = JSON.parse(s.data || '{}'); } catch (_) { sd = {}; }
-    const oldRows = Array.isArray(sd.rows) ? sd.rows : [];
-    const used = new Set();
-    const newRows = defs.map((d, i) => {
-      let idx = -1;
-      if (d.kpi && d.kpi.trim()) idx = oldRows.findIndex((x, j) => !used.has(j) && x && x.kpi && x.kpi.trim() === d.kpi.trim());
-      if (idx < 0 && oldRows[i] && !used.has(i)) idx = i;
-      if (idx >= 0) used.add(idx);
-      const prev = idx >= 0 ? oldRows[idx] : null;
-      // Start from this quarter's existing row (keeps its Achievement %, comments, doc),
-      // then overlay the shared objective definition. New objectives start blank here.
-      return prev ? { ...prev, ...d } : { ...d };
-    });
-    sd.rows = newRows;
-    if (!sd.employee) sd.employee = {};
-    if (!sd.managerComments) sd.managerComments = {};
-    upd.run(JSON.stringify(sd), s.id);
+    const rows = Array.isArray(sd.rows) ? sd.rows : [];
+    const indexByText = new Map();
+    rows.forEach((r, i) => { const k = norm(r && r.kpi); if (k && !indexByText.has(k)) indexByText.set(k, i); });
+    let changed = false;
+    for (const d of defs) {
+      const key = norm(d.kpi);
+      if (key && indexByText.has(key)) {
+        // Update only the definition fields on the existing row; keep its Achievement %,
+        // comments and support doc untouched.
+        const r = rows[indexByText.get(key)];
+        for (const k of ['cat', 'type', 'goal', 'weight', 'locked']) {
+          if (r[k] !== d[k]) { r[k] = d[k]; changed = true; }
+        }
+      } else {
+        // Objective not present in this quarter yet — add it (blank result for this quarter).
+        rows.push({ ...d });
+        changed = true;
+      }
+    }
+    if (changed) {
+      sd.rows = rows;
+      if (!sd.employee) sd.employee = {};
+      if (!sd.managerComments) sd.managerComments = {};
+      upd.run(JSON.stringify(sd), s.id);
+    }
   }
 }
 
