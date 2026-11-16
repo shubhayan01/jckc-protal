@@ -334,6 +334,32 @@ function seedChannels() {
   }
 }
 
+// ---------------------------------------------------------------- hierarchy fix: Mohit Kakkar → Abhishek Chauhan
+// Org-chart change: the SEO executives who reported to Mohit Kakkar now report to
+// Abhishek Chauhan (JW118, abhishek.chauhan@justwords.in). Mohit's own account is
+// deactivated (kept for history, cannot log in) rather than deleted. This runs on
+// EVERY startup so it also fixes the live, persisted database on deploy — seed()
+// never re-runs on an existing DB. It is matched by email and fully idempotent:
+// once applied it is a harmless no-op, and it never deletes, wipes or duplicates
+// any row (KPIs, appraisals, messages and uploads are untouched).
+function remapMohitToAbhishek() {
+  try {
+    const abhishek = db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get('abhishek.chauhan@justwords.in');
+    const mohit    = db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get('mohit.kakkar@justwords.in');
+    if (!abhishek) return;                 // target manager absent → do nothing
+    if (mohit) {
+      // 1. Move any of Mohit's direct reports onto Abhishek.
+      db.prepare('UPDATE users SET manager_id=? WHERE manager_id=?').run(abhishek.id, mohit.id);
+      // 3. Deactivate Mohit and clear his manager flag (he has no reports now).
+      db.prepare('UPDATE users SET active=0, is_manager=0 WHERE id=?').run(mohit.id);
+    }
+    // 2. Abhishek now manages people (grant manager role if he was a plain employee).
+    db.prepare("UPDATE users SET is_manager=1, role=CASE WHEN role='employee' THEN 'manager' ELSE role END WHERE id=?").run(abhishek.id);
+  } catch (e) {
+    console.error('remapMohitToAbhishek migration failed:', e.message);
+  }
+}
+
 // ---------------------------------------------------------------- helpers
 function firstName(name) {
   return String(name).trim().split(/\s+/)[0].replace(/[^A-Za-z]/g, '') || 'User';
@@ -494,5 +520,6 @@ seed();
 seedPages();
 seedAnnouncements();
 seedChannels();
+remapMohitToAbhishek();
 
 module.exports = { db };

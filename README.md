@@ -86,9 +86,10 @@ each step.
 ## Note on the reporting hierarchy
 
 Manager relationships are seeded from the **Excel** ("Reporting Manager" column), which is the
-authoritative source. It differs from the hand-typed list in a few places — most notably the SEO
-executives (Nitesh, Rajeev, Nutan, Himanshu, Krishan) report to **Abhishek Chauhan** in the Excel,
-not Mohit Kakkar. Tell me if you want the typed hierarchy to win instead and I'll re-map them.
+authoritative source. The SEO executives (Nitesh, Rajeev, Nutan, Himanshu, Krishan) report to
+**Abhishek Chauhan** (JW118), not Mohit Kakkar. Mohit's account has been **deactivated** (kept for
+history, cannot log in). On an already-live database this is applied by the idempotent
+`remapMohitToAbhishek()` migration in `db.js`, which runs on every startup and never wipes data.
 
 ## Tech
 
