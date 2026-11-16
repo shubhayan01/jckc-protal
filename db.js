@@ -352,6 +352,21 @@ function remapMohitToAbhishek() {
       db.prepare('UPDATE users SET manager_id=? WHERE manager_id=?').run(abhishek.id, mohit.id);
       // 3. Deactivate Mohit and clear his manager flag (he has no reports now).
       db.prepare('UPDATE users SET active=0, is_manager=0 WHERE id=?').run(mohit.id);
+      // 4. Re-route in-flight KPI/appraisal forms whose approver chain still points at
+      //    Mohit so they land on Abhishek instead (Mohit is deactivated and can no
+      //    longer act, which would otherwise strand them). New submissions already
+      //    rebuild the chain from the live reporting line, so this only patches forms
+      //    frozen mid-review. Fully-approved forms are left untouched so their past
+      //    sign-off history stays truthful. A positional swap keeps stage_index valid,
+      //    and it is idempotent — once no chain holds Mohit's id it is a no-op.
+      const forms = db.prepare("SELECT id, chain FROM forms WHERE status != 'approved'").all();
+      const updChain = db.prepare('UPDATE forms SET chain=? WHERE id=?');
+      for (const f of forms) {
+        let chain;
+        try { chain = JSON.parse(f.chain || '[]'); } catch (_) { continue; }
+        if (!Array.isArray(chain) || !chain.includes(mohit.id)) continue;
+        updChain.run(JSON.stringify(chain.map(id => (id === mohit.id ? abhishek.id : id))), f.id);
+      }
     }
     // 2. Abhishek now manages people (grant manager role if he was a plain employee).
     db.prepare("UPDATE users SET is_manager=1, role=CASE WHEN role='employee' THEN 'manager' ELSE role END WHERE id=?").run(abhishek.id);
