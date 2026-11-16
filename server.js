@@ -322,6 +322,44 @@ function carryForwardData(type, userId, fy, newQuarter) {
   return {}; // nothing to carry — client seeds defaults
 }
 
+// Share KPI objective definitions across all four quarters of a year. The objective
+// rows (category, type, text, goal, weightage, locked flag) are one shared set, so an
+// objective added or edited in any quarter shows up in every quarter. Only the objective
+// DEFINITION is propagated — each quarter keeps its OWN Achievement %, per-row comments
+// and support doc. Locked quarters (approved / in review) are left untouched so signed-off
+// history and forms mid-approval are never rewritten. Absent quarters inherit the set when
+// first opened via carryForwardData. Matching is by objective text (robust to re-ordering)
+// with a positional fallback — the same heuristic used to align quarter results.
+function syncObjectivesAcrossQuarters(srcForm, srcData) {
+  if (!srcForm || srcForm.type !== 'kpi') return;
+  const defs = (Array.isArray(srcData && srcData.rows) ? srcData.rows : []).map(r => ({
+    cat: r.cat, type: r.type, kpi: r.kpi, goal: r.goal, weight: r.weight, locked: r.locked,
+  }));
+  const sibs = db.prepare("SELECT * FROM forms WHERE type='kpi' AND user_id=? AND fy=? AND quarter!=?")
+    .all(srcForm.user_id, srcForm.fy, srcForm.quarter);
+  const upd = db.prepare("UPDATE forms SET data=?, updated_at=datetime('now') WHERE id=?");
+  for (const s of sibs) {
+    if (s.status === 'approved' || s.status === 'in_review') continue; // never rewrite locked history
+    let sd; try { sd = JSON.parse(s.data || '{}'); } catch (_) { sd = {}; }
+    const oldRows = Array.isArray(sd.rows) ? sd.rows : [];
+    const used = new Set();
+    const newRows = defs.map((d, i) => {
+      let idx = -1;
+      if (d.kpi && d.kpi.trim()) idx = oldRows.findIndex((x, j) => !used.has(j) && x && x.kpi && x.kpi.trim() === d.kpi.trim());
+      if (idx < 0 && oldRows[i] && !used.has(i)) idx = i;
+      if (idx >= 0) used.add(idx);
+      const prev = idx >= 0 ? oldRows[idx] : null;
+      // Start from this quarter's existing row (keeps its Achievement %, comments, doc),
+      // then overlay the shared objective definition. New objectives start blank here.
+      return prev ? { ...prev, ...d } : { ...d };
+    });
+    sd.rows = newRows;
+    if (!sd.employee) sd.employee = {};
+    if (!sd.managerComments) sd.managerComments = {};
+    upd.run(JSON.stringify(sd), s.id);
+  }
+}
+
 // List forms visible to me: my own + those of my direct/indirect reports + (HR sees all)
 app.get('/api/forms', requireAuth, (req, res) => {
   const type = req.query.type === 'appraisal' ? 'appraisal' : 'kpi';
@@ -394,6 +432,7 @@ app.post('/api/form/:id/save', requireAuth, (req, res) => {
   const data = normMgrComments(req.body.data || {});
   db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=?, updated_at=datetime(\'now\') WHERE id=?')
     .run(JSON.stringify(data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
+  syncObjectivesAcrossQuarters(f, data); // keep KPI objectives shared across Q1–Q4
   if (canFull && !isOwner) {
     db.prepare('INSERT INTO approvals (form_id,actor_id,action,comment) VALUES (?,?,?,?)').run(f.id, req.user.id, 'edit', 'Edited the form');
     notify(f.user_id, `${req.user.name} updated your ${f.type.toUpperCase()} ${f.quarter} form`, '#/form/' + f.id, 'info');
@@ -420,7 +459,10 @@ app.post('/api/form/:id/submit', requireAuth, (req, res) => {
     if (top) chain = [top.id];
   }
   if (chain.length === 0) return res.status(400).json({ error: 'No approver configured — ask HR to set your reporting manager.' });
-  if (req.body.data) db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?').run(JSON.stringify(req.body.data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
+  if (req.body.data) {
+    db.prepare('UPDATE forms SET data=?, auto_score=?, final_score=? WHERE id=?').run(JSON.stringify(req.body.data), req.body.auto_score ?? f.auto_score, req.body.final_score ?? f.final_score, f.id);
+    syncObjectivesAcrossQuarters(f, req.body.data); // propagate latest objectives to sibling quarters before locking this one
+  }
   db.prepare("UPDATE forms SET status='in_review', stage_index=0, chain=?, locked=1, submit_count=submit_count+1, updated_at=datetime('now') WHERE id=?")
     .run(JSON.stringify(chain), f.id);
   db.prepare('INSERT INTO approvals (form_id,actor_id,action,stage,comment) VALUES (?,?,?,?,?)').run(f.id, req.user.id, 'submit', 0, req.body.comment || 'Submitted for review');
