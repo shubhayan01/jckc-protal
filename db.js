@@ -552,10 +552,18 @@ function seedAnnouncements() {
 // startup and is idempotent; it only touches this one test row and nothing else.
 function ensureTestAccount() {
   try {
+    const pass = bcrypt.hashSync('Test1234', 10);
     const t = db.prepare("SELECT id FROM users WHERE lower(email)='test@justwords.in'").get();
-    if (!t) return;
-    db.prepare('UPDATE users SET password=?, must_reset=0, active=1 WHERE id=?')
-      .run(bcrypt.hashSync('Test1234', 10), t.id);
+    if (t) {
+      db.prepare('UPDATE users SET password=?, must_reset=0, active=1 WHERE id=?').run(pass, t.id);
+      return;
+    }
+    // Not present (e.g. a fresh seed, which no longer includes the QA account) — create it
+    // so the test login works on every environment. Report to the GM if one exists.
+    const mgr = db.prepare("SELECT id FROM users WHERE lower(email)='saurav.jha@justwords.in'").get();
+    db.prepare(`INSERT INTO users (ecode,name,designation,email,password,must_reset,role,department,manager_id,active)
+      VALUES ('JW999','Test Associate','QA Test Account','test@justwords.in',?,0,'employee','Content',?,1)`)
+      .run(pass, mgr ? mgr.id : null);
   } catch (e) { console.error('ensureTestAccount failed:', e.message); }
 }
 
