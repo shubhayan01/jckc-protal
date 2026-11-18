@@ -7,6 +7,7 @@
  */
 const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -531,8 +532,28 @@ function ensureTestAccount() {
 //   • a form that already has a real, named individual-objective row is left alone
 //     (assume the employee/manager has edited it) — so re-runs can only ADD, not wipe;
 //   • only absent forms, or blank/default auto-created ones, get populated.
-// Set KPI_RESEED=yes to also overwrite non-locked forms (used to push a corrected
-// sheet on a later deploy); it still never overwrites approved/in_review forms.
+// A form carries a _seedHash fingerprint of the rows we last wrote. On a later deploy
+// we refresh a form ONLY while it is still pristine (never submitted and unchanged
+// since we seeded it) — so a corrected sheet flows through, but an employee's own
+// draft edits (which change the fingerprint) and any submitted/approved form are left
+// alone. Set KPI_RESEED=yes to force-refresh every non-locked form regardless.
+//
+// REASSIGNED cleans up a sheet that was first seeded onto the wrong person: it deletes
+// the wrong owner's still-pristine seeded drafts (identified by matching the correct
+// owner's row fingerprint) so they don't linger. Safe + idempotent — it never removes a
+// form that was submitted or whose rows the employee changed.
+const KPI_REASSIGNED = [
+  { fromEcode: 'JW118', dataFromEcode: 'JW249' }, // Abhishek(AGM) was mis-seeded with Saurav(GM)'s GM sheet
+];
+
+function kpiRowsHash(rows) {
+  const norm = (Array.isArray(rows) ? rows : []).map(r => ({
+    cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '',
+    q1: r.q1 || '', q2: r.q2 || '', q3: r.q3 || '', q4: r.q4 || '', comments: r.comments || '', locked: !!r.locked,
+  }));
+  return crypto.createHash('sha1').update(JSON.stringify(norm)).digest('hex');
+}
+
 function seedKPIs() {
   const file = path.join(__dirname, 'seed_kpis.json');
   if (!fs.existsSync(file)) return;
@@ -546,25 +567,43 @@ function seedKPIs() {
   const getForm = db.prepare('SELECT * FROM forms WHERE type=? AND user_id=? AND fy=? AND quarter=?');
   const insForm = db.prepare('INSERT INTO forms (type,user_id,fy,quarter,chain,data,status,stage_index) VALUES (?,?,?,?,?,?,?,?)');
   const updForm = db.prepare("UPDATE forms SET data=?, updated_at=datetime('now') WHERE id=?");
+  const delForm = db.prepare('DELETE FROM forms WHERE id=?');
 
-  const hasRealIndividual = (data) => Array.isArray(data && data.rows) &&
-    data.rows.some(r => r && String(r.cat || '') !== 'Mandatory Team Objectives' && String(r.kpi || '').trim());
+  const buildRows = (p) => (Array.isArray(p.rows) ? p.rows : []).map(r => {
+    const row = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '' };
+    for (const q of QKEYS) row[q] = r[q] || '';
+    if (r.comments) row.comments = r.comments;
+    if (r.locked) row.locked = true;
+    return row;
+  });
+  const byEcode = {};
+  for (const p of people) byEcode[p.ecode] = p;
+
+  // --- reassignment cleanup: remove the wrong owner's still-pristine seeded drafts ---
+  let removed = 0;
+  for (const ra of KPI_REASSIGNED) {
+    const wrong = findUser.get(ra.fromEcode, ra.fromEcode);
+    const src = byEcode[ra.dataFromEcode];
+    if (!wrong || !src) continue;
+    const srcHash = kpiRowsHash(buildRows(src));
+    const fy = src.fy || 'FY2026-27';
+    for (const quarter of ['Q1', 'Q2']) {
+      const f = getForm.get('kpi', wrong.id, fy, quarter);
+      if (!f || f.status !== 'draft' || f.submit_count > 0) continue;
+      let cur; try { cur = JSON.parse(f.data || '{}'); } catch (_) { cur = {}; }
+      if (kpiRowsHash(cur.rows) === srcHash) { delForm.run(f.id); removed++; }
+    }
+  }
 
   let created = 0, filled = 0, skipped = 0, missing = 0;
   for (const p of people) {
     const u = findUser.get(p.ecode || '', p.email || p.ecode || '');
     if (!u) { missing++; console.warn(`seedKPIs: no user for ${p.ecode} (${p.name})`); continue; }
     const fy = p.fy || 'FY2026-27';
-    const rows = (Array.isArray(p.rows) ? p.rows : []).map(r => {
-      const row = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '' };
-      for (const q of QKEYS) row[q] = r[q] || '';
-      if (r.comments) row.comments = r.comments;
-      if (r.locked) row.locked = true;
-      return row;
-    });
+    const rows = buildRows(p);
     if (!rows.length) continue;
-    const data = { employee: { financialYear: fy }, rows, managerComments: {} };
-    const payload = JSON.stringify(data);
+    const newHash = kpiRowsHash(rows);
+    const payload = JSON.stringify({ employee: { financialYear: fy }, rows, managerComments: {}, _seedHash: newHash });
     // Seed Q1 and Q2 so the shared objective set is present in both quarters; each
     // quarter's own result lives in its row's q1/q2 field.
     for (const quarter of ['Q1', 'Q2']) {
@@ -573,16 +612,21 @@ function seedKPIs() {
         insForm.run('kpi', u.id, fy, quarter, '[]', payload, 'draft', -1);
         created++;
       } else if (f.status === 'approved' || f.status === 'in_review') {
-        skipped++;                                   // locked — never touch
+        skipped++;                                   // locked history — never touch
       } else {
         let cur; try { cur = JSON.parse(f.data || '{}'); } catch (_) { cur = {}; }
-        if (hasRealIndividual(cur) && !force) { skipped++; continue; }  // already filled/edited
-        updForm.run(payload, f.id);
-        filled++;
+        const stored = cur._seedHash;
+        if (stored === newHash && !force) { skipped++; continue; }   // already current
+        // Pristine = never submitted AND unchanged since our last seed (or a legacy
+        // seeded draft with no fingerprint yet). Only then do we refresh.
+        const pristine = (stored != null && stored === kpiRowsHash(cur.rows)) ||
+                         (stored == null && f.submit_count === 0);
+        if (pristine || force) { updForm.run(payload, f.id); filled++; }
+        else skipped++;                              // employee edited their draft — leave it
       }
     }
   }
-  console.log(`seedKPIs: created ${created}, filled ${filled}, skipped ${skipped}, missing-user ${missing}.`);
+  console.log(`seedKPIs: created ${created}, filled ${filled}, skipped ${skipped}, removed ${removed}, missing-user ${missing}.`);
 }
 
 // Allow `node db.js --reseed` to wipe and rebuild. This DESTROYS all data
