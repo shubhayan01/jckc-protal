@@ -1559,7 +1559,7 @@ a:hover { color: #000; }
 /* KPI form download/upload tools */
 .kpi-io-tools { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .io-dd { position: relative; }
-.io-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 150px;
+.io-menu { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30; min-width: 150px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 30px rgba(20,23,28,.12); padding: 6px; }
 .io-menu[hidden] { display: none; }

@@ -789,17 +789,7 @@ function paintForm() {
     </div>
 
     <div class="card"><div class="card-head"><span class="card-title">${icon('chart', 'section-icon')}${isKPI ? 'Key Performance Indicators' : 'Objectives & Key Results'}</span>
-      <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span>
-      ${isKPI ? `<div class="kpi-io-tools">
-        <div class="io-dd">
-          <button class="btn btn-sm" id="kpiDownloadBtn" type="button">${icon('download', 'icon-sm')}Download ▾</button>
-          <div class="io-menu" id="kpiDownloadMenu" hidden>
-            <button class="io-opt" type="button" data-dl="excel">Excel (.xlsx)</button>
-            <button class="io-opt" type="button" data-dl="pdf">PDF</button>
-          </div>
-        </div>
-        ${(editable && f.rights.isOwner) || managerEditing ? `<label class="btn btn-sm" id="kpiUploadBtn" title="Upload a filled KPI sheet — the data is read in automatically, whatever the column order">${icon('upload', 'icon-sm')}Upload sheet<input type="file" id="kpiUploadInput" accept=".xlsx,.xls,.csv" hidden></label>` : ''}
-      </div>` : ''}</div>
+      <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span></div>
       <div class="tbl-wrap"><table class="kpi-table ${isKPI ? 'kpi-table-quarters' : ''}" id="kpiTable"><thead><tr>
         <th style="min-width:220px">Objective / KPI</th>
         <th>Goal (Year)</th><th>Weightage&nbsp;%</th><th class="achv-head" title="% of the goal achieved in ${f.quarter}">Achievement&nbsp;%</th>
@@ -847,8 +837,16 @@ function paintForm() {
 
     ${isKPI ? `<p class="muted" style="margin:18px 2px 0">Note: The Performance Based Incentive (PBI) is payable only if the Mandatory Team Objectives (overall company performance) are fully achieved, and is disbursed with the April salary for associates on regular payroll. Not applicable during training, probation or notice period.</p>` : ''}
 
-    ${(editable && f.rights.isOwner) || managerEditing || (f.rights.isOwner && (f.status === 'draft' || f.status === 'sent_back')) || f.rights.canApprove ? `
+    ${isKPI || (editable && f.rights.isOwner) || managerEditing || (f.rights.isOwner && (f.status === 'draft' || f.status === 'sent_back')) || f.rights.canApprove ? `
     <div class="card card-pad form-action-bar"><div class="toolbar">
+      ${isKPI ? `<div class="io-dd">
+          <button class="btn" id="kpiDownloadBtn" type="button">${icon('download', 'icon-sm')}Download ▾</button>
+          <div class="io-menu" id="kpiDownloadMenu" hidden>
+            <button class="io-opt" type="button" data-dl="excel">Excel (.xlsx)</button>
+            <button class="io-opt" type="button" data-dl="pdf">PDF</button>
+          </div>
+        </div>
+        ${(editable && f.rights.isOwner) || managerEditing ? `<label class="btn" id="kpiUploadBtn" title="Upload a filled KPI sheet — the data is read in automatically, whatever the column order">${icon('upload', 'icon-sm')}Upload sheet<input type="file" id="kpiUploadInput" accept=".xlsx,.xls,.csv" hidden></label>` : ''}` : ''}
       ${editable && f.rights.isOwner ? `<button class="btn" id="saveDraft">${icon('edit', 'icon-sm')}Save draft</button>` : ''}
       ${managerEditing ? `<button class="btn" id="saveMgr">${icon('edit', 'icon-sm')}Save changes</button>` : ''}
       ${f.rights.isOwner && (f.status === 'draft' || f.status === 'sent_back') ? `<button class="btn btn-primary" id="submitBtn">${icon('send', 'icon-sm')}${f.submit_count ? 'Resubmit for review' : 'Submit for review'}</button>` : ''}
@@ -1084,33 +1082,56 @@ function kpiParseAoa(aoa) {
   return rows;
 }
 
+// Score for a specific quarter (computeAuto is for the quarter currently being filed).
+function computeAutoFor(rows, Q) {
+  const qk = Q.toLowerCase(); let total = 0, any = false;
+  rows.forEach(r => {
+    const ach = parseFloat(r[qk]); const w = parseFloat(r.weight);
+    if (isNaN(ach) || isNaN(w) || w <= 0) return;
+    total += (ach * w) / 100; any = true;
+  });
+  return any ? Math.round(total) : 0;
+}
+
 async function importKpiSheet(file) {
   if (typeof XLSX === 'undefined') { toast('Spreadsheet reader not loaded — refresh and try again', 'err'); return; }
+  let rows = [];
   try {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array', cellDates: true });
-    let rows = [];
     for (const sn of wb.SheetNames) {
       const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
       const parsed = kpiParseAoa(aoa);
       if (parsed.filter(r => r.cat !== 'Mandatory Team Objectives' && r.kpi).length) { rows = parsed; break; }
     }
-    if (!rows.length) { toast('Could not find a KPI table in that file', 'err'); return; }
-    const data = collectData();
-    data.rows = rows.map(r => {
-      const o = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '', q1: r.q1 || '', q2: r.q2 || '', q3: r.q3 || '', q4: r.q4 || '' };
-      if (r.comments) o.comments = r.comments;
-      if (r.locked) o.locked = true;
-      return o;
-    });
-    FormCtx.form.data = data;
-    view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
-    wireRowEvents();
-    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', syncScore));
-    syncScore();
-    const n = rows.filter(r => r.cat !== 'Mandatory Team Objectives' && r.kpi).length;
-    toast(`Imported ${n} objectives from ${file.name} — review, then Save draft to keep`, 'ok');
-  } catch (ex) { toast('Import failed: ' + ex.message, 'err'); }
+  } catch (ex) { toast('Could not read that file: ' + ex.message, 'err'); return; }
+  if (!rows.length) { toast('Could not find a KPI table in that file', 'err'); return; }
+
+  const f = FormCtx.form, owner = f.owner, base = collectData();
+  const normRows = rows.map(r => {
+    const o = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '', q1: r.q1 || '', q2: r.q2 || '', q3: r.q3 || '', q4: r.q4 || '' };
+    if (r.comments) o.comments = r.comments;
+    if (r.locked) o.locked = true;
+    return o;
+  });
+  const data = { employee: base.employee || { financialYear: f.fy }, rows: normRows, managerComments: base.managerComments || {} };
+  const n = normRows.filter(r => r.cat !== 'Mandatory Team Objectives' && r.kpi).length;
+
+  // The sheet carries every quarter's result, but each quarter is its own form and its
+  // column is read from THAT quarter's form — so write the imported rows into every
+  // (unlocked) quarter form. That way Q1–Q4 all show their results, not just the one filed.
+  toast(`Importing ${n} objectives with all quarter results…`, 'ok');
+  let saved = 0, locked = 0;
+  try {
+    for (const Q of ['Q1', 'Q2', 'Q3', 'Q4']) {
+      const { form } = await api(`/form?type=kpi&fy=${encodeURIComponent(f.fy)}&quarter=${Q}&user_id=${owner.id}`);
+      if (form.status === 'approved' || form.status === 'in_review') { locked++; continue; }
+      await api('/form/' + form.id + '/save', { method: 'POST', body: { data, auto_score: computeAutoFor(normRows, Q), final_score: form.final_score } });
+      saved++;
+    }
+  } catch (ex) { toast('Import saved only partially: ' + ex.message, 'err'); await loadForm(); return; }
+  await loadForm();
+  toast(`Imported ${n} objectives from ${file.name} across ${saved} quarter${saved === 1 ? '' : 's'}${locked ? ` (${locked} locked quarter${locked === 1 ? '' : 's'} skipped)` : ''}`, 'ok');
 }
 
 // Build full Q1–Q4 rows for export: this quarter from the live table, other quarters
