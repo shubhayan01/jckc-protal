@@ -51,6 +51,7 @@
     font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:8px}
   code{background:#f0f2f5;padding:1px 6px;border-radius:5px;font-size:12.5px}
 </style>
+<script src="/vendor/xlsx.full.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -81,7 +82,10 @@
     <p class="sub">Download the entire portal database as one JSON file, or restore everything from a backup you saved earlier.</p>
 
     <button class="btn primary" id="downloadBtn">⬇  Download all data (JSON)</button>
-    <p class="note">Includes every table — employees, KPIs, appraisals, approvals, messages, assets and more. Keep this file somewhere safe; it contains personal data and password hashes.</p>
+    <p class="note">Full backup for restore — every table: employees, KPIs, appraisals, approvals, messages, assets and more. Keep it safe; it contains personal data and password hashes.</p>
+
+    <button class="btn" id="downloadFormsBtn" style="margin-top:12px">⬇  Download KPIs, Appraisals &amp; History (Excel)</button>
+    <p class="note">A readable workbook: every KPI and appraisal (all quarters, objectives, goals, results and scores) plus the full approval history for both — on separate sheets.</p>
 
     <div class="hr"></div>
 
@@ -140,6 +144,48 @@
     // GET with the session cookie → browser downloads the attachment directly.
     window.location='/api/admin/backup/export';
     show(actionMsg,'ok','Your download should start now. Save the file somewhere safe.');
+  };
+
+  // Readable Excel export of all KPIs, Appraisals and their approval history.
+  document.getElementById('downloadFormsBtn').onclick=async function(){
+    if(typeof XLSX==='undefined'){show(actionMsg,'err','Spreadsheet library not loaded — refresh and try again.');return;}
+    show(actionMsg,'ok','Building the workbook…');
+    try{
+      var res=await fetch('/api/admin/backup/export');
+      if(!res.ok){var j=null;try{j=await res.json();}catch(e){} throw new Error((j&&j.error)||('Export failed (HTTP '+res.status+')'));}
+      var b=await res.json(); var T=b.tables||{};
+      var users={}; (T.users||[]).forEach(function(u){users[u.id]=u;});
+      function uname(id){var u=users[id];return u?(u.name+(u.ecode?(' ('+u.ecode+')'):'')):('#'+id);}
+      var forms=T.forms||[], formById={}; forms.forEach(function(f){formById[f.id]=f;});
+
+      var kpi=[['Ecode','Name','FY','Quarter','Status','Final score','Auto score','Objective Type','KPI','Goal','Weightage %','Q1','Q2','Q3','Q4','Comments']];
+      var apr=[['Ecode','Name','FY','Status','Final score','Section / Competency','Self rating','Achievements','Strengths','Areas to improve','Goals','Manager overall']];
+      forms.forEach(function(f){
+        var o=users[f.user_id]||{}, d={}; try{d=JSON.parse(f.data||'{}');}catch(e){}
+        if(f.type==='kpi'){
+          var rows=(d.rows||[]);
+          if(!rows.length){kpi.push([o.ecode||'',o.name||'',f.fy,f.quarter,f.status,f.final_score,f.auto_score,'','','','','','','','','']);return;}
+          rows.forEach(function(r){kpi.push([o.ecode||'',o.name||'',f.fy,f.quarter,f.status,f.final_score,f.auto_score,r.cat||r.type||'',r.kpi||'',r.goal||'',r.weight||'',r.q1||'',r.q2||'',r.q3||'',r.q4||'',r.comments||'']);});
+        } else if(f.type==='appraisal'){
+          var self=d.self||{}, ratings=self.ratings||{}, mr=d.managerReview||d.mr||{}, keys=Object.keys(ratings);
+          if(!keys.length){apr.push([o.ecode||'',o.name||'',f.fy,f.status,f.final_score,'','',self.achievements||'',self.strengths||'',self.improvements||'',self.goals||'',mr.overall||'']);return;}
+          keys.forEach(function(k,i){apr.push([o.ecode||'',o.name||'',f.fy,f.status,f.final_score,k,ratings[k],i===0?(self.achievements||''):'',i===0?(self.strengths||''):'',i===0?(self.improvements||''):'',i===0?(self.goals||''):'',i===0?(mr.overall||''):'']);});
+        }
+      });
+      var hist=[['When','Form type','Owner','FY','Quarter','Actor','Action','Stage','Comment']];
+      (T.approvals||[]).forEach(function(a){var f=formById[a.form_id]||{},o=users[f.user_id]||{};
+        hist.push([a.at,f.type||'',o.name||'',f.fy||'',f.quarter||'',uname(a.actor_id),a.action,a.stage,a.comment||'']);});
+
+      var wb=XLSX.utils.book_new();
+      var wsK=XLSX.utils.aoa_to_sheet(kpi); wsK['!cols']=[{wch:9},{wch:20},{wch:11},{wch:8},{wch:10},{wch:11},{wch:10},{wch:22},{wch:46},{wch:20},{wch:12},{wch:10},{wch:10},{wch:8},{wch:8},{wch:30}];
+      var wsA=XLSX.utils.aoa_to_sheet(apr); wsA['!cols']=[{wch:9},{wch:20},{wch:11},{wch:10},{wch:11},{wch:26},{wch:11},{wch:30},{wch:30},{wch:30},{wch:30},{wch:30}];
+      var wsH=XLSX.utils.aoa_to_sheet(hist); wsH['!cols']=[{wch:20},{wch:11},{wch:20},{wch:11},{wch:8},{wch:24},{wch:16},{wch:7},{wch:40}];
+      XLSX.utils.book_append_sheet(wb,wsK,'KPIs');
+      XLSX.utils.book_append_sheet(wb,wsA,'Appraisals');
+      XLSX.utils.book_append_sheet(wb,wsH,'History');
+      XLSX.writeFile(wb,'JCKC-KPI-Appraisal-'+new Date().toISOString().slice(0,10)+'.xlsx');
+      show(actionMsg,'ok','Workbook downloaded — KPIs ('+(kpi.length-1)+' rows), Appraisals ('+(apr.length-1)+'), History ('+(hist.length-1)+').');
+    }catch(e){show(actionMsg,'err',e.message);}
   };
 
   var fileInput=document.getElementById('file'), fileName=document.getElementById('fileName');
