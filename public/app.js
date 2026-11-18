@@ -789,7 +789,17 @@ function paintForm() {
     </div>
 
     <div class="card"><div class="card-head"><span class="card-title">${icon('chart', 'section-icon')}${isKPI ? 'Key Performance Indicators' : 'Objectives & Key Results'}</span>
-      <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span></div>
+      <span class="muted">${isKPI ? `All four quarters shown together — now filing <strong>${f.quarter}</strong>; finished quarters stay locked as history` : 'Filing for ' + f.quarter}</span>
+      ${isKPI ? `<div class="kpi-io-tools">
+        <div class="io-dd">
+          <button class="btn btn-sm" id="kpiDownloadBtn" type="button">${icon('download', 'icon-sm')}Download ▾</button>
+          <div class="io-menu" id="kpiDownloadMenu" hidden>
+            <button class="io-opt" type="button" data-dl="excel">Excel (.xlsx)</button>
+            <button class="io-opt" type="button" data-dl="pdf">PDF</button>
+          </div>
+        </div>
+        ${(editable && f.rights.isOwner) || managerEditing ? `<label class="btn btn-sm" id="kpiUploadBtn" title="Upload a filled KPI sheet — the data is read in automatically, whatever the column order">${icon('upload', 'icon-sm')}Upload sheet<input type="file" id="kpiUploadInput" accept=".xlsx,.xls,.csv" hidden></label>` : ''}
+      </div>` : ''}</div>
       <div class="tbl-wrap"><table class="kpi-table ${isKPI ? 'kpi-table-quarters' : ''}" id="kpiTable"><thead><tr>
         <th style="min-width:220px">Objective / KPI</th>
         <th>Goal (Year)</th><th>Weightage&nbsp;%</th><th class="achv-head" title="% of the goal achieved in ${f.quarter}">Achievement&nbsp;%</th>
@@ -985,6 +995,170 @@ function wireForm() {
   if (approveBtn) approveBtn.onclick = () => approveModal(f, f.rights.isAncestor && !f.rights.isOwner ? kpiPayload : null);
   const sendbackBtn = document.getElementById('sendbackBtn');
   if (sendbackBtn) sendbackBtn.onclick = () => sendbackModal(f, f.rights.isAncestor && !f.rights.isOwner ? kpiPayload : null);
+
+  // Download (Excel / PDF) + Upload-sheet tools on the KPI form.
+  const dlBtn = document.getElementById('kpiDownloadBtn');
+  const dlMenu = document.getElementById('kpiDownloadMenu');
+  if (dlBtn && dlMenu) {
+    dlBtn.onclick = (e) => { e.stopPropagation(); dlMenu.hidden = !dlMenu.hidden; };
+    document.addEventListener('click', () => { dlMenu.hidden = true; }, { once: true });
+    view().querySelectorAll('[data-dl]').forEach(b => b.onclick = () => {
+      dlMenu.hidden = true;
+      if (b.dataset.dl === 'excel') exportKpiExcel(); else exportKpiPdf();
+    });
+  }
+  const upIn = document.getElementById('kpiUploadInput');
+  if (upIn) upIn.onchange = () => { const file = upIn.files[0]; if (file) importKpiSheet(file); upIn.value = ''; };
+}
+
+// ---------------------------------------------------------------- KPI import / export
+// Download the current KPI form as a real .xlsx or a print-to-PDF, and import a filled
+// KPI sheet back in. The importer detects the table by its headers (not fixed column
+// positions), so it reads a sheet in whatever order/format HR built it.
+function kpiCleanNum(f) {
+  if (Math.abs(f - Math.round(f)) < 1e-9) return String(Math.round(f));
+  return String(Math.round(f * 10000) / 10000);
+}
+function kpiCellText(v) {
+  if (v == null) return '';
+  if (typeof v === 'number') return kpiCleanNum(v);
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).trim();
+}
+function kpiNormWeight(v) {
+  if (v == null || v === '') return '';
+  let s = String(v).trim(); const pct = s.endsWith('%'); if (pct) s = s.slice(0, -1).trim();
+  const f = parseFloat(s.replace(/,/g, ''));
+  if (isNaN(f)) return String(v).trim();
+  return kpiCleanNum(!pct && f > 0 && f <= 1 ? f * 100 : f);
+}
+function kpiTitleCase(s) { return String(s).toLowerCase().replace(/\b\w/g, c => c.toUpperCase()); }
+
+// Parse a sheet (array-of-arrays) into KPI rows, locating the table by its header row.
+function kpiParseAoa(aoa) {
+  const HEADERWORDS = new Set(['objective', 'target', 'kpi', 'key performance indicator (kpi)', 'key performance indicators (kpi)']);
+  const FOOTER = /^(achievement\(%\)|total weightage|key areas needing|q[1-4] comments|note:)/i;
+  let kpiCol = -1;
+  for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+    const row = aoa[i] || [];
+    const joined = row.map(c => String(c == null ? '' : c)).join(' ').toLowerCase();
+    if (joined.indexOf('goal for the year') < 0 && joined.indexOf('weightage') < 0) continue;
+    for (let c = 0; c < row.length; c++) {
+      if (String(row[c] || '').toLowerCase().indexOf('key performance indicator') >= 0) { kpiCol = c; break; }
+    }
+    if (kpiCol >= 0) break;
+  }
+  if (kpiCol < 0) kpiCol = 1;
+  const tcol = kpiCol > 0 ? kpiCol - 1 : 0, gcol = kpiCol + 1, wcol = kpiCol + 2;
+  const q1 = kpiCol + 3, q2 = kpiCol + 4, q3 = kpiCol + 5, q4 = kpiCol + 6, ccol = kpiCol + 7, dcol = kpiCol + 8;
+  const cell = (row, i) => kpiCellText(row && row[i]);
+  const rows = []; let mode = null, curCat = 'Individual Objectives';
+  for (const row of aoa) {
+    const tval = cell(row, tcol), low = tval.toLowerCase(), kpi = cell(row, kpiCol);
+    let jstr = ''; for (let i = 0; i <= kpiCol; i++) jstr += cell(row, i) + ' '; jstr = jstr.trim();
+    if (FOOTER.test(tval) || FOOTER.test(kpi) || FOOTER.test(jstr)) break;
+    const qv = [cell(row, q1), cell(row, q2), cell(row, q3), cell(row, q4)];
+    const anyq = qv.some(x => x);
+    if (low.indexOf('individual') >= 0) {
+      mode = 'ind'; curCat = 'Individual Objectives';
+      if (kpi && !HEADERWORDS.has(kpi.toLowerCase())) {
+        rows.push({ cat: curCat, type: curCat, kpi, goal: cell(row, gcol), weight: kpiNormWeight(row && row[wcol]), q1: qv[0], q2: qv[1], q3: qv[2], q4: qv[3], comments: [cell(row, ccol), cell(row, dcol)].filter(Boolean).join(' | ') });
+      }
+      continue;
+    }
+    if (low.indexOf('mandatory') === 0) {
+      mode = 'mand';
+      if (kpi) rows.push({ cat: 'Mandatory Team Objectives', type: 'Mandatory Team Objectives', kpi, goal: cell(row, gcol), weight: '', q1: qv[0], q2: qv[1], q3: qv[2], q4: qv[3], comments: cell(row, ccol) || cell(row, dcol), locked: true });
+      continue;
+    }
+    if (mode === 'mand') {
+      if (kpi) rows.push({ cat: 'Mandatory Team Objectives', type: 'Mandatory Team Objectives', kpi, goal: cell(row, gcol), weight: '', q1: qv[0], q2: qv[1], q3: qv[2], q4: qv[3], comments: cell(row, ccol) || cell(row, dcol), locked: true });
+      continue;
+    }
+    if (mode === 'ind') {
+      if (!kpi) { if (tval && !anyq) curCat = kpiTitleCase(tval); continue; }
+      if (HEADERWORDS.has(kpi.toLowerCase())) continue;
+      rows.push({ cat: curCat, type: curCat, kpi, goal: cell(row, gcol), weight: kpiNormWeight(row && row[wcol]), q1: qv[0], q2: qv[1], q3: qv[2], q4: qv[3], comments: [cell(row, ccol), cell(row, dcol)].filter(Boolean).join(' | ') });
+    }
+  }
+  return rows;
+}
+
+async function importKpiSheet(file) {
+  if (typeof XLSX === 'undefined') { toast('Spreadsheet reader not loaded — refresh and try again', 'err'); return; }
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+    let rows = [];
+    for (const sn of wb.SheetNames) {
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
+      const parsed = kpiParseAoa(aoa);
+      if (parsed.filter(r => r.cat !== 'Mandatory Team Objectives' && r.kpi).length) { rows = parsed; break; }
+    }
+    if (!rows.length) { toast('Could not find a KPI table in that file', 'err'); return; }
+    const data = collectData();
+    data.rows = rows.map(r => {
+      const o = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '', q1: r.q1 || '', q2: r.q2 || '', q3: r.q3 || '', q4: r.q4 || '' };
+      if (r.comments) o.comments = r.comments;
+      if (r.locked) o.locked = true;
+      return o;
+    });
+    FormCtx.form.data = data;
+    view().querySelector('#kpiTable tbody').innerHTML = renderRows(data.rows, true);
+    wireRowEvents();
+    view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(el => el.addEventListener('input', syncScore));
+    syncScore();
+    const n = rows.filter(r => r.cat !== 'Mandatory Team Objectives' && r.kpi).length;
+    toast(`Imported ${n} objectives from ${file.name} — review, then Save draft to keep`, 'ok');
+  } catch (ex) { toast('Import failed: ' + ex.message, 'err'); }
+}
+
+// Build full Q1–Q4 rows for export: this quarter from the live table, other quarters
+// from their saved sibling results.
+function kpiExportRows() {
+  const f = FormCtx.form; const data = collectData(); const qmeta = f.quarters || {};
+  return data.rows.map((r, i) => {
+    const get = (Q) => {
+      const qk = Q.toLowerCase();
+      if (Q === f.quarter) return r[qk] || '';
+      const meta = qmeta[Q] || {};
+      return (meta.results && meta.results[i]) || r[qk] || '';
+    };
+    return { cat: r.cat, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '', q1: get('Q1'), q2: get('Q2'), q3: get('Q3'), q4: get('Q4'), comments: r.comments || '' };
+  });
+}
+
+function exportKpiExcel() {
+  if (typeof XLSX === 'undefined') { toast('Spreadsheet writer not loaded — refresh and try again', 'err'); return; }
+  const f = FormCtx.form, o = f.owner;
+  const aoa = [
+    ['PERFORMANCE BASED INCENTIVE PLAN (' + (f.fy || '') + ')'],
+    ['Name:', o.name, 'Designation:', o.designation || '', '', 'Deptt:', o.department || ''],
+    ['Objectives Type', 'Key Performance Indicators (KPI)', 'Goal for the Year', 'Weightage (%)', 'Q1', 'Q2', 'Q3', 'Q4', 'Comments'],
+  ];
+  kpiExportRows().forEach(r => aoa.push([r.cat, r.kpi, r.goal, r.weight, r.q1, r.q2, r.q3, r.q4, r.comments]));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 24 }, { wch: 50 }, { wch: 22 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 32 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'KPI');
+  XLSX.writeFile(wb, `KPI_${(o.ecode || o.name || 'form')}_${String(f.fy || '').replace(/[^\w-]/g, '')}.xlsx`);
+}
+
+function exportKpiPdf() {
+  const f = FormCtx.form, o = f.owner;
+  const body = kpiExportRows().map(r => `<tr><td>${esc(r.kpi)}</td><td>${esc(r.goal)}</td><td class="n">${esc(r.weight)}</td><td class="n">${esc(r.q1)}</td><td class="n">${esc(r.q2)}</td><td class="n">${esc(r.q3)}</td><td class="n">${esc(r.q4)}</td><td>${esc(r.comments)}</td></tr>`).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>KPI — ${esc(o.name)} ${esc(f.fy || '')}</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;color:#15171c;margin:24px}h1{font-size:18px;margin:0 0 4px}
+    .sub{color:#555;margin:0 0 14px;font-size:12.5px}table{border-collapse:collapse;width:100%;font-size:11px}
+    th,td{border:1px solid #ccc;padding:5px 6px;text-align:left;vertical-align:top}th{background:#f3f4f6}
+    td.n{text-align:center;white-space:nowrap}@media print{.noprint{display:none}}</style></head><body>
+    <h1>Performance Based Incentive Plan — ${esc(f.fy || '')}</h1>
+    <p class="sub">${esc(o.name)} · ${esc(o.designation || '')} · ${esc(o.department || '')}</p>
+    <table><thead><tr><th style="min-width:220px">Objective / KPI</th><th>Goal (Year)</th><th>Wt %</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th><th>Comments</th></tr></thead><tbody>${body}</tbody></table>
+    <p class="noprint" style="margin-top:14px"><button onclick="window.print()">Print / Save as PDF</button></p>
+    <script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { toast('Allow pop-ups to download the PDF', 'err'); return; }
+  w.document.write(html); w.document.close();
 }
 
 function wireRowEvents() {

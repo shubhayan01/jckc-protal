@@ -1555,3 +1555,15 @@ a:hover { color: #000; }
   padding: 8px 12px; color: var(--text) !important; font-weight: 600;
   display: inline-block; letter-spacing: .2px;
 }
+
+/* KPI form download/upload tools */
+.kpi-io-tools { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.io-dd { position: relative; }
+.io-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 150px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(20,23,28,.12); padding: 6px; }
+.io-menu[hidden] { display: none; }
+.io-opt { display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13.5px; color: var(--text); font-weight: 600; }
+.io-opt:hover { background: var(--surface-2); }
+#kpiUploadBtn { cursor: pointer; }
