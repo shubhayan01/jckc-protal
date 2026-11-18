@@ -509,6 +509,82 @@ function seedAnnouncements() {
     'Have an idea to make Justwords better? Share feedback or concerns with HR — anonymously if you prefer.', 0);
 }
 
+// ---------------------------------------------------------------- test account
+// Keep the QA/demo account (test@justwords.in) signable-in with a known, fixed
+// password so it is predictable across every environment and deploy. Runs on
+// startup and is idempotent; it only touches this one test row and nothing else.
+function ensureTestAccount() {
+  try {
+    const t = db.prepare("SELECT id FROM users WHERE lower(email)='test@justwords.in'").get();
+    if (!t) return;
+    db.prepare('UPDATE users SET password=?, must_reset=0, active=1 WHERE id=?')
+      .run(bcrypt.hashSync('Test1234', 10), t.id);
+  } catch (e) { console.error('ensureTestAccount failed:', e.message); }
+}
+
+// ---------------------------------------------------------------- KPI seeding
+// Populate KPI forms from seed_kpis.json (built from the HR Excel sheets). Runs on
+// every startup so a deploy reflects it on the live, persisted (volume) database —
+// seed() itself never re-runs once users exist. Fully idempotent and NON-DESTRUCTIVE:
+//   • users are matched by ecode (stable across databases), falling back to email;
+//   • a form that is approved or in_review is NEVER touched (locked history);
+//   • a form that already has a real, named individual-objective row is left alone
+//     (assume the employee/manager has edited it) — so re-runs can only ADD, not wipe;
+//   • only absent forms, or blank/default auto-created ones, get populated.
+// Set KPI_RESEED=yes to also overwrite non-locked forms (used to push a corrected
+// sheet on a later deploy); it still never overwrites approved/in_review forms.
+function seedKPIs() {
+  const file = path.join(__dirname, 'seed_kpis.json');
+  if (!fs.existsSync(file)) return;
+  let people;
+  try { people = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch (e) {
+    console.error('seedKPIs: could not read seed_kpis.json:', e.message); return;
+  }
+  const force = process.env.KPI_RESEED === 'yes';
+  const QKEYS = ['q1', 'q2', 'q3', 'q4'];
+  const findUser = db.prepare('SELECT id FROM users WHERE ecode=? OR lower(email)=lower(?)');
+  const getForm = db.prepare('SELECT * FROM forms WHERE type=? AND user_id=? AND fy=? AND quarter=?');
+  const insForm = db.prepare('INSERT INTO forms (type,user_id,fy,quarter,chain,data,status,stage_index) VALUES (?,?,?,?,?,?,?,?)');
+  const updForm = db.prepare("UPDATE forms SET data=?, updated_at=datetime('now') WHERE id=?");
+
+  const hasRealIndividual = (data) => Array.isArray(data && data.rows) &&
+    data.rows.some(r => r && String(r.cat || '') !== 'Mandatory Team Objectives' && String(r.kpi || '').trim());
+
+  let created = 0, filled = 0, skipped = 0, missing = 0;
+  for (const p of people) {
+    const u = findUser.get(p.ecode || '', p.email || p.ecode || '');
+    if (!u) { missing++; console.warn(`seedKPIs: no user for ${p.ecode} (${p.name})`); continue; }
+    const fy = p.fy || 'FY2026-27';
+    const rows = (Array.isArray(p.rows) ? p.rows : []).map(r => {
+      const row = { cat: r.cat, type: r.type, kpi: r.kpi || '', goal: r.goal || '', weight: r.weight || '' };
+      for (const q of QKEYS) row[q] = r[q] || '';
+      if (r.comments) row.comments = r.comments;
+      if (r.locked) row.locked = true;
+      return row;
+    });
+    if (!rows.length) continue;
+    const data = { employee: { financialYear: fy }, rows, managerComments: {} };
+    const payload = JSON.stringify(data);
+    // Seed Q1 and Q2 so the shared objective set is present in both quarters; each
+    // quarter's own result lives in its row's q1/q2 field.
+    for (const quarter of ['Q1', 'Q2']) {
+      const f = getForm.get('kpi', u.id, fy, quarter);
+      if (!f) {
+        insForm.run('kpi', u.id, fy, quarter, '[]', payload, 'draft', -1);
+        created++;
+      } else if (f.status === 'approved' || f.status === 'in_review') {
+        skipped++;                                   // locked — never touch
+      } else {
+        let cur; try { cur = JSON.parse(f.data || '{}'); } catch (_) { cur = {}; }
+        if (hasRealIndividual(cur) && !force) { skipped++; continue; }  // already filled/edited
+        updForm.run(payload, f.id);
+        filled++;
+      }
+    }
+  }
+  console.log(`seedKPIs: created ${created}, filled ${filled}, skipped ${skipped}, missing-user ${missing}.`);
+}
+
 // Allow `node db.js --reseed` to wipe and rebuild. This DESTROYS all data
 // (KPIs, appraisals, messages, everything), so it is guarded: it refuses unless
 // you ALSO pass --force or set RESEED_CONFIRM=yes. A plain accidental run — or a
@@ -536,5 +612,7 @@ seedPages();
 seedAnnouncements();
 seedChannels();
 remapMohitToAbhishek();
+seedKPIs();
+ensureTestAccount();
 
 module.exports = { db };
