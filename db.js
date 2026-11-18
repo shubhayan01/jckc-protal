@@ -376,6 +376,42 @@ function remapMohitToAbhishek() {
   }
 }
 
+// ---------------------------------------------------------------- directory update (Nov 2026)
+// Apply the consolidated org directory to the live, persisted database. Runs on every
+// startup so a deploy reflects it on the mounted volume (seed() never re-runs on an
+// existing DB). Idempotent and additive: it re-codes Abhishek (JW118 → JW267) and adds
+// four new hires if they aren't present yet. Matched by email, so it is safe across
+// databases and a no-op once applied. It does NOT deactivate or re-parent anyone else.
+function applyDirectoryNov2026() {
+  try {
+    const byEmail = (e) => db.prepare('SELECT id FROM users WHERE lower(email)=lower(?)').get(e);
+    // 1. Abhishek Chauhan: new employee code + updated designation (same person/email).
+    db.prepare("UPDATE users SET ecode='JW267', designation='AGM – Digital Marketing' WHERE lower(email)='abhishek.chauhan@justwords.in'").run();
+    // 2. New hires (insert only if the email isn't already on the roster).
+    const saurav = byEmail('saurav.jha@justwords.in');
+    const abhishek = byEmail('abhishek.chauhan@justwords.in');
+    const pass = bcrypt.hashSync('Test1234', 10);
+    const newcomers = [
+      ['JW263', 'Bhavesh Parihar', 'Project Manager – Digital Marketing', 'Bhavesh.Parihar@justwords.in', 'Digital Marketing', saurav],
+      ['JW264', 'Suraj Purohit',   'Sr. Digital Marketing Specialist',    'Suraj.Purohit@justwords.in',   'Digital Marketing', abhishek],
+      ['JW265', 'Bablu Pal',       'Web Developer',                        'Bablu.Pal@justwords.in',       'Web Development',   saurav],
+      ['JW266', 'Prince Verma',    'Sr. Digital Marketing Specialist',    'prince.verma@justwords.in',    'Digital Marketing', abhishek],
+    ];
+    const ins = db.prepare(`INSERT INTO users (ecode,name,designation,email,password,must_reset,role,department,manager_id,active)
+      VALUES (?,?,?,?,?,0,'employee',?,?,1)`);
+    for (const [ecode, name, desig, email, dept, mgr] of newcomers) {
+      if (byEmail(email)) continue;                         // already present — skip
+      ins.run(ecode, name, desig, email, pass, dept, mgr ? mgr.id : null);
+    }
+    // 3. Make sure the two managers of the new reports are flagged as managers.
+    for (const m of [saurav, abhishek]) {
+      if (m) db.prepare("UPDATE users SET is_manager=1, role=CASE WHEN role='employee' THEN 'manager' ELSE role END WHERE id=?").run(m.id);
+    }
+  } catch (e) {
+    console.error('applyDirectoryNov2026 migration failed:', e.message);
+  }
+}
+
 // ---------------------------------------------------------------- helpers
 function firstName(name) {
   return String(name).trim().split(/\s+/)[0].replace(/[^A-Za-z]/g, '') || 'User';
@@ -656,6 +692,7 @@ seedPages();
 seedAnnouncements();
 seedChannels();
 remapMohitToAbhishek();
+applyDirectoryNov2026();
 seedKPIs();
 ensureTestAccount();
 

@@ -28,9 +28,9 @@
   "manager": "Nikita Gupta"
  },
  {
-  "ecode": "JW118",
+  "ecode": "JW267",
   "name": "Abhishek Chauhan",
-  "designation": "Assistant General Manager - Digital Marketing",
+  "designation": "AGM – Digital Marketing",
   "email": "abhishek.chauhan@justwords.in",
   "manager": "Saurav Jha"
  },
@@ -383,5 +383,33 @@
   "designation": "Quality Analyst Intern",
   "email": "Anjali.Sharma@justwords.in",
   "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW263",
+  "name": "Bhavesh Parihar",
+  "designation": "Project Manager – Digital Marketing",
+  "email": "Bhavesh.Parihar@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW264",
+  "name": "Suraj Purohit",
+  "designation": "Sr. Digital Marketing Specialist",
+  "email": "Suraj.Purohit@justwords.in",
+  "manager": "Abhishek Chauhan"
+ },
+ {
+  "ecode": "JW265",
+  "name": "Bablu Pal",
+  "designation": "Web Developer",
+  "email": "Bablu.Pal@justwords.in",
+  "manager": "Saurav Jha"
+ },
+ {
+  "ecode": "JW266",
+  "name": "Prince Verma",
+  "designation": "Sr. Digital Marketing Specialist",
+  "email": "prince.verma@justwords.in",
+  "manager": "Abhishek Chauhan"
  }
 ]
