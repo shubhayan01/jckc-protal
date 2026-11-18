@@ -156,6 +156,14 @@ function stageLabel(form) {
 function formView(form, viewer) {
   const owner = getUser(form.user_id);
   const chain = JSON.parse(form.chain || '[]');
+  // Display chain: a draft/sent-back form hasn't locked in an approval route yet (and
+  // seeded drafts store an empty chain), so show the CURRENT reporting line up to the
+  // CEO — this is what the "Reporting Manager" field and chain strip render, and it
+  // always reflects the live hierarchy. Once in review/approved we keep the recorded
+  // chain, which carries the real route and each approver's state.
+  const displayChain = (form.status === 'draft' || form.status === 'sent_back')
+    ? approvalChain(form.user_id)
+    : chain;
   const anc = ancestorIds(form.user_id);
   const isOwner = viewer.id === form.user_id;
   const isAncestor = anc.has(viewer.id);
@@ -236,7 +244,7 @@ function formView(form, viewer) {
     submit_count: form.submit_count, locked: !!form.locked,
     updated_at: form.updated_at, created_at: form.created_at,
     owner: { id: owner.id, name: owner.name, designation: owner.designation, department: owner.department, ecode: owner.ecode, email: owner.email, manager_id: owner.manager_id },
-    chain: chain.map((cid, i) => {
+    chain: displayChain.map((cid, i) => {
       const u = getUser(cid);
       let state = 'waiting';
       if (form.status === 'approved') state = 'approved';
