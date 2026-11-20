@@ -667,24 +667,9 @@ function mgrCommentList(data, q) {
   return Array.isArray(v) ? v : (v.text ? [v] : []);
 }
 
-// KPI score = Σ ( Achievement % × Weightage % ) ÷ 100 for the quarter being filed.
-// Each row contributes (achievement × weight / 100) points; weightage that isn't
-// achieved is simply lost, so the score reflects both how much was delivered and how
-// important each KPI is. Rows without a weightage contribute nothing to the total.
-function computeAuto(rows) {
-  let total = 0, any = false;
-  rows.forEach(r => {
-    const ach = parseFloat(r[FormCtx.quarter.toLowerCase()]);
-    const w = parseFloat(r.weight);
-    if (isNaN(ach) || isNaN(w) || w <= 0) return;
-    total += (ach * w) / 100;
-    any = true;
-  });
-  return any ? Math.round(total) : 0;
-}
-
-// Keep the read-only Achievement % column and the auto score in step with whatever
-// is typed into the quarter currently being filed. Shared by every edit path.
+// Keep the read-only Achievement % column in step with whatever is typed into the
+// quarter currently being filed. Shared by every edit path. The final score is
+// entered manually — there is no auto-calculation.
 function syncScore() {
   const data = collectData();
   const cur = FormCtx.quarter.toLowerCase();
@@ -692,7 +677,6 @@ function syncScore() {
     const r = data.rows[Number(tr.dataset.row)]; if (!r) return;
     const m = tr.querySelector('[data-achv]'); if (m) m.value = r[cur] || '';
   });
-  const el = document.getElementById('autoScore'); if (el) el.textContent = computeAuto(data.rows);
 }
 
 function paintForm() {
@@ -708,7 +692,6 @@ function paintForm() {
 
   // send-back history
   const sendbacks = f.history.filter(h => h.action === 'send_back');
-  const auto = computeAuto(data.rows);
 
   // approval chain strip
   const chainHTML = f.chain.length ? f.chain.map((c, i) => `
@@ -804,19 +787,10 @@ function paintForm() {
     </div>
 
     <div class="card card-pad">
-      <div class="card-title" style="margin-bottom:14px">${icon('target', 'section-icon')}${f.quarter} Final Score (out of 100)
-        <button class="icon-btn btn-sm score-info-btn" id="scoreInfo" type="button" title="How is this score calculated?">${icon('info', 'icon-sm')}</button></div>
+      <div class="card-title" style="margin-bottom:14px">${icon('target', 'section-icon')}${f.quarter} Final Score (out of 100)</div>
       <div class="score-box">
-        <div><div class="lbl muted">Auto-calculated</div><div class="big" id="autoScore">${auto}</div></div>
         <div><div class="lbl muted">Final score</div><input class="kpi-num" id="finalScore" style="font-size:22px;height:44px;width:90px;text-align:center" value="${f.final_score != null ? f.final_score : ''}" ${ro}></div>
-        ${editable ? `<button class="btn btn-sm" id="useCalc">${icon('arrow', 'icon-sm')}Use calculated</button>` : ''}
-        <div class="muted" style="max-width:360px">Auto-calculated as Σ (Achievement&nbsp;% × Weightage&nbsp;%) ÷ 100 for ${f.quarter}. Tap the ${icon('info', 'icon-sm')} to see how. You can override it in the Final score field.</div>
-      </div>
-      <div class="score-info" id="scoreInfoPanel" hidden>
-        <strong>How this score is calculated</strong>
-        <p>For each KPI, its <b>Achievement&nbsp;%</b> (how much of the goal you met this quarter) is multiplied by its <b>Weightage&nbsp;%</b> and divided by 100. Every row is then added together:</p>
-        <p class="score-formula">Score = Σ ( Achievement % × Weightage % ) ÷ 100</p>
-        <p>Example: 80% achieved on a KPI weighted 40% contributes <b>32</b> points; 90% on a 60%-weight KPI adds <b>54</b> — a total of <b>86 / 100</b>. Weightage you don't achieve is lost, so the score reflects both how much you delivered and how important each KPI is. The Achievement&nbsp;% column mirrors the ${f.quarter} column you're filling.</p>
+        <div class="muted" style="max-width:360px">Enter the ${f.quarter} final score out of 100, assessed against the KPIs above.</div>
       </div>
     </div>
 
@@ -947,12 +921,8 @@ function wireForm() {
     if (location.hash.startsWith('#/form/')) { /* keep */ }
     loadForm();
   });
-  // recompute auto score + Achievement % column live
+  // keep the read-only Achievement % column in step with the quarter being filed
   view().querySelectorAll('#kpiTable input, #kpiTable textarea').forEach(i => i.addEventListener('input', syncScore));
-
-  // (i) button: explain how the score is calculated
-  const scoreInfo = document.getElementById('scoreInfo');
-  if (scoreInfo) scoreInfo.onclick = () => { const p = document.getElementById('scoreInfoPanel'); if (p) p.hidden = !p.hidden; };
 
   const addRow = document.getElementById('addRow');
   if (addRow) addRow.onclick = () => {
@@ -963,9 +933,6 @@ function wireForm() {
     wireRowEvents();
   };
   wireRowEvents();
-
-  const useCalc = document.getElementById('useCalc');
-  if (useCalc) useCalc.onclick = () => { document.getElementById('finalScore').value = document.getElementById('autoScore').textContent; };
 
   const saveDraft = document.getElementById('saveDraft');
   if (saveDraft) saveDraft.onclick = () => saveForm('Draft saved');
@@ -979,7 +946,7 @@ function wireForm() {
     if (!confirm('Submit this ' + f.quarter + ' form for review? It will be locked while your reporting line approves it.')) return;
     const data = collectData();
     try {
-      await api('/form/' + f.id + '/submit', { method: 'POST', body: { data, auto_score: computeAuto(data.rows), final_score: numOrNull(document.getElementById('finalScore').value) } });
+      await api('/form/' + f.id + '/submit', { method: 'POST', body: { data, auto_score: null, final_score: numOrNull(document.getElementById('finalScore').value) } });
       toast('Submitted for review', 'ok'); loadForm();
     } catch (ex) { toast(ex.message, 'err'); }
   };
@@ -987,7 +954,7 @@ function wireForm() {
   // Managers in the chain carry their in-form edits + row comments along with the action.
   const kpiPayload = () => {
     const data = collectData();
-    return { data, auto_score: computeAuto(data.rows), final_score: numOrNull((document.getElementById('finalScore') || {}).value) };
+    return { data, auto_score: null, final_score: numOrNull((document.getElementById('finalScore') || {}).value) };
   };
   const approveBtn = document.getElementById('approveBtn');
   if (approveBtn) approveBtn.onclick = () => approveModal(f, f.rights.isAncestor && !f.rights.isOwner ? kpiPayload : null);
@@ -1082,17 +1049,6 @@ function kpiParseAoa(aoa) {
   return rows;
 }
 
-// Score for a specific quarter (computeAuto is for the quarter currently being filed).
-function computeAutoFor(rows, Q) {
-  const qk = Q.toLowerCase(); let total = 0, any = false;
-  rows.forEach(r => {
-    const ach = parseFloat(r[qk]); const w = parseFloat(r.weight);
-    if (isNaN(ach) || isNaN(w) || w <= 0) return;
-    total += (ach * w) / 100; any = true;
-  });
-  return any ? Math.round(total) : 0;
-}
-
 async function importKpiSheet(file) {
   if (typeof XLSX === 'undefined') { toast('Spreadsheet reader not loaded — refresh and try again', 'err'); return; }
   let rows = [];
@@ -1126,7 +1082,7 @@ async function importKpiSheet(file) {
     for (const Q of ['Q1', 'Q2', 'Q3', 'Q4']) {
       const { form } = await api(`/form?type=kpi&fy=${encodeURIComponent(f.fy)}&quarter=${Q}&user_id=${owner.id}`);
       if (form.status === 'approved' || form.status === 'in_review') { locked++; continue; }
-      await api('/form/' + form.id + '/save', { method: 'POST', body: { data, auto_score: computeAutoFor(normRows, Q), final_score: form.final_score } });
+      await api('/form/' + form.id + '/save', { method: 'POST', body: { data, auto_score: null, final_score: form.final_score } });
       saved++;
     }
   } catch (ex) { toast('Import saved only partially: ' + ex.message, 'err'); await loadForm(); return; }
@@ -1240,7 +1196,7 @@ async function saveForm(msg) {
   const f = FormCtx.form;
   const data = collectData();
   try {
-    const { form } = await api('/form/' + f.id + '/save', { method: 'POST', body: { data, auto_score: computeAuto(data.rows), final_score: numOrNull((document.getElementById('finalScore') || {}).value) } });
+    const { form } = await api('/form/' + f.id + '/save', { method: 'POST', body: { data, auto_score: null, final_score: numOrNull((document.getElementById('finalScore') || {}).value) } });
     FormCtx.form = form;
     toast(msg || 'Saved', 'ok');
   } catch (ex) { toast(ex.message, 'err'); }
